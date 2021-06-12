@@ -2,7 +2,7 @@ import os
 from unittest import TestCase
 import numpy as np
 
-from mmsbm.funcs import compute_likelihood, compute_prod_dist
+from lib.funcs import compute_likelihood, compute_prod_dist
 
 
 class TestFuncs(TestCase):
