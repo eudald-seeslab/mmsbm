@@ -1,24 +1,33 @@
 import numpy as np
 import pandas as pd
-from numba import jit
 
 
 def init_random_array(shape, rng):
     return rng.random(shape)
 
 
-@jit
+def compute_omega(x, theta, eta, pr, ratings):
+    return theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ratings.index(x[2])])
+
+
 def update_coefs(data, ratings, theta, eta, pr):
     # Initialize the empty objects
-    n_theta, n_eta, n_pr = np.zeros_like(theta), np.zeros_like(eta), np.zeros_like(pr)
 
-    for x in data:
-        ra = ratings.index(x[2])
-        omega = (theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ra])).sum().sum()
-        a = (theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ra])) / omega
-        n_theta[x[0], :] += a.sum(1)
-        n_eta[x[1], :] += a.sum(0)
-        n_pr[:, :, ra] += a
+    omegas = np.array([compute_omega(a, theta, eta, pr, ratings) for a in data])
+    sum_omega = omegas.sum(axis=-1).sum(axis=-1)
+    increments = np.array([a / b for (a, b) in zip(omegas, sum_omega)])
+
+    n_theta = np.array(
+        [increments[np.where(data[:, 0] == a)].sum(-1).sum(0) for a in range(theta.shape[0])]
+    )
+    n_eta = np.array(
+        [increments[np.where(data[:, 1] == a)].sum(0).sum(0) for a in range(eta.shape[0])]
+    )
+    n_pr = np.swapaxes(
+        np.swapaxes(
+            np.array([increments[np.where(data[:, 2] == a)].sum(0) for a in ratings]),
+            0, 1),
+        1, 2)
 
     return n_theta, n_eta, n_pr
 
@@ -33,28 +42,22 @@ def normalize_with_self(df):
     return (temp / (np.where(temp.sum(axis=1) == 0, 1, temp.sum(axis=1)))[:, np.newaxis]).reshape(df.shape)
 
 
-@jit
 def compute_likelihood(data, ratings, theta, eta, pr):
-    likelihood = 0
-    for x in data:
-        ra = ratings.index(x[2])
-        omega = (theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ra])).sum().sum()
-        likelihood += ((theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ra])) * np.log(omega) / omega).sum().sum()
-
-    return likelihood
+    omegas = np.array([compute_omega(a, theta, eta, pr, ratings) for a in data])
+    return sum([a * np.log(b) / b for (a, b) in zip(omegas, omegas.sum(-1).sum(-1))])
 
 
 def prod_dist(x, theta, eta, pr, sampling):
-    return (theta[x[0]][:, np.newaxis, np.newaxis] * (eta[x[1], :][:, np.newaxis] * pr)).sum(axis=0).sum(axis=0) / sampling
+    return (
+      theta[x[0]][:, np.newaxis, np.newaxis] * (eta[x[1], :][:, np.newaxis] * pr)
+    ).sum(axis=0).sum(axis=0) / sampling
 
 
-# Note: not jit'd because numba sucks
 def compute_prod_dist(data, theta, eta, pr, sampling):
-    return np.apply_along_axis(prod_dist, axis=1, arr=data, theta=theta, eta=eta, pr=pr, sampling=sampling)
+    return np.array([prod_dist(a, theta, eta, pr, sampling) for a in data])
 
 
 def weighting(x, ratings):
-    # TODO: this is likely improvable
     return sum([a * b for (a, b) in zip(x, ratings)])
 
 
