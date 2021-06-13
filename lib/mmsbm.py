@@ -70,4 +70,4 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
     logger.info(f"We had an accuracy of {accuracy}, a MAE of {mae} and s2 and weighted s2 of {s2} and {s2pond:.0f}.")
 
     # In case we are running from a notebook and we want to inspect the results
-    return prs, accuracy, mae, s2, s2pond
+    return accuracy
