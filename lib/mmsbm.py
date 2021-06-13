@@ -1,12 +1,13 @@
 import logging
+import multiprocessing
 import os
 from datetime import datetime
 
 import numpy as np
-from tqdm import tqdm
 
-from lib.funcs import normalize_with_d, init_random_array, normalize_with_self, update_coefs, compute_likelihood, \
-    compute_prod_dist, compute_indicators, compute_final_stats
+from lib.funcs import compute_indicators, compute_final_stats
+
+from lib.one_sampling import run_one_sampling
 
 
 def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, seed):
@@ -14,6 +15,8 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
 
     # Initiate the random state
     rng = np.random.default_rng(seed)
+    # Create seeds for each process
+    seeds = list(rng.integers(low=1, high=10000, size=sampling))
 
     logger = logging.getLogger("MMSBM")
     logging.basicConfig(level=logging.INFO)
@@ -40,46 +43,22 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
     [d0.update({a: []}) for a in set(range(p + 1)).difference(set(d0.keys()))]
     [d1.update({a: []}) for a in set(range(m + 1)).difference(set(d1.keys()))]
 
-    likelihoods = []
-    s_prs = []
-    for s in range(sampling):
+    manager = multiprocessing.Manager()
+    return_dict = manager.dict()
+    jobs = []
+    for i in range(sampling):
+        pr = multiprocessing.Process(
+                target=run_one_sampling,
+                args=(d0, d1, p, m, r, user_groups, item_groups, iterations, train, test, ratings, seeds[i], i, return_dict)
+            )
+        jobs.append(pr)
+        pr.start()
 
-        logger.info(f"Running run {s + 1} out of {sampling}.")
+    for proc in jobs:
+        proc.join()
 
-        # Generate random (but normalized) inits
-        theta = normalize_with_d(
-            init_random_array((p + 1, user_groups), rng), d0
-        )
-        eta = normalize_with_d(
-            init_random_array((m + 1, item_groups), rng), d1
-        )
-        pr = normalize_with_self(
-            init_random_array((user_groups, item_groups, r), rng)
-        )
-
-        # Do the work
-        # We store the prs to check convergence
-        prs = []
-        for _ in tqdm(range(iterations)):
-            # This is the crux of the script; please see funcs.py
-            n_theta, n_eta, npr = update_coefs(data=train, ratings=ratings, theta=theta, eta=eta, pr=pr)
-
-            # Update with normalization
-            theta = normalize_with_d(n_theta, d0)
-            eta = normalize_with_d(n_eta, d1)
-            pr = normalize_with_self(npr)
-
-            # This can be removed when not debugging
-            prs.append(pr)
-
-        # Compute the likelihood
-        likelihoods.append(compute_likelihood(train, ratings, theta, eta, pr))
-
-        # Predictions
-        rat += compute_prod_dist(test, theta, eta, pr) / sampling
-
-        # Store the prs
-        s_prs.append(prs)
+    rat = np.array([a["rat"] for a in return_dict.values()]).mean(axis=0)
+    prs = [a["prs"] for a in return_dict.values()]
 
     # How did we do?
     rat = compute_indicators(rat, test, ratings)
@@ -91,4 +70,4 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
     logger.info(f"We had an accuracy of {accuracy}, a MAE of {mae} and s2 and weighted s2 of {s2} and {s2pond:.0f}.")
 
     # In case we are running from a notebook and we want to inspect the results
-    return s_prs, accuracy, mae, s2, s2pond
+    return prs, accuracy, mae, s2, s2pond
