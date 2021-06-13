@@ -47,14 +47,14 @@ def compute_likelihood(data, ratings, theta, eta, pr):
     return sum([a * np.log(b) / b for (a, b) in zip(omegas, omegas.sum(-1).sum(-1))])
 
 
-def prod_dist(x, theta, eta, pr, sampling):
+def prod_dist(x, theta, eta, pr):
     return (
       theta[x[0]][:, np.newaxis, np.newaxis] * (eta[x[1], :][:, np.newaxis] * pr)
-    ).sum(axis=0).sum(axis=0) / sampling
+    ).sum(axis=0).sum(axis=0)
 
 
-def compute_prod_dist(data, theta, eta, pr, sampling):
-    return np.array([prod_dist(a, theta, eta, pr, sampling) for a in data])
+def compute_prod_dist(data, theta, eta, pr):
+    return np.array([prod_dist(a, theta, eta, pr) for a in data])
 
 
 def weighting(x, ratings):
