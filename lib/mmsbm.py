@@ -47,12 +47,12 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
     return_dict = manager.dict()
     jobs = []
     for i in range(sampling):
-        pr = multiprocessing.Process(
+        proc = multiprocessing.Process(
                 target=run_one_sampling,
                 args=(d0, d1, p, m, r, user_groups, item_groups, iterations, train, test, ratings, seeds[i], i, return_dict)
             )
-        jobs.append(pr)
-        pr.start()
+        jobs.append(proc)
+        proc.start()
 
     for proc in jobs:
         proc.join()
