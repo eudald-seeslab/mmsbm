@@ -1,37 +1,63 @@
 import optuna
 
 from lib.mmsbm import mmsbm
+from lib.utils import import_config
 
 
-def optimizer(trial):
-    # Constants
-    train = "u1.base"
-    test = "u1.test"
-    sampling = 5
-    # Number of groups of users
-    k = trial.suggest_int("k", 1, 30)
-    # Number of groups of items
-    l = trial.suggest_int("l", 1, 30)
-    # Iterations
-    # To plateau the coefficients the minimum is 600
-    iterations = 10
+class Optimizer:
+    def __init__(self, optuna_study, cfg):
+        self.min_k = cfg["optimizer"]["min_user_groups"]
+        self.max_k = cfg["optimizer"]["max_user_groups"]
+        self.min_l = cfg["optimizer"]["min_item_groups"]
+        self.max_l = cfg["optimizer"]["max_item_groups"]
+        self.train = cfg["data"]["train"]
+        self.test = cfg["data"]["test"]
+        self.iterations = cfg["training"]["iterations"]
+        self.sampling = cfg["training"]["sampling"]
+        self.seed = cfg["training"]["seed"]
+        self.study = optuna_study
 
-    return mmsbm(
-        train_set=train,
-        test_set=test,
-        user_groups=k,
-        item_groups=l,
-        iterations=iterations,
-        sampling=sampling,
-        seed=1714
+    def _optimize_params(self, trial):
+        # Number of groups of users
+        user_groups = trial.suggest_int("k", self.min_k, self.max_k)
+        # Number of groups of items
+        item_groups = trial.suggest_int("l", self.min_l, self.max_l)
+
+        return mmsbm(
+            train_set=self.train,
+            test_set=self.test,
+            user_groups=user_groups,
+            item_groups=item_groups,
+            iterations=self.iterations,
+            sampling=self.sampling,
+            seed=1714
         )
+
+    def optimize(self, n_trials):
+        try:
+            self.study.optimize(
+                self._optimize_params, n_trials=n_trials
+            )
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            print(e)
 
 
 if __name__ == "__main__":
+    # Get parameters
+    config = import_config(local=True)
+    study_name = config["optimizer"]["study_name"]
+    num_trials = config["training"]["trials"]
+
+    # Set up the study
     study = optuna.create_study(
-        study_name="mmsbm",
+        study_name=study_name,
         storage="sqlite:///parameters.db",
         load_if_exists=True,
         direction="maximize"
     )
-    study.optimize(optimizer, n_trials=40)
+
+    # Optimize
+    optimizer = Optimizer(study, config)
+    optimizer.optimize(num_trials)
