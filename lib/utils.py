@@ -1,9 +1,12 @@
 import argparse
+from ruamel.yaml import YAML
 
 
 def parse_args():
 
-    parser = argparse.ArgumentParser(description="Mixed membership stochastic block models")
+    parser = argparse.ArgumentParser(
+        description="Mixed membership stochastic block models"
+    )
     parser.add_argument(
         "-t",
         "--train",
@@ -26,7 +29,7 @@ def parse_args():
         dest="K",
         type=int,
         help="Number of user groups",
-        required=True
+        required=True,
     )
     parser.add_argument(
         "-l",
@@ -62,4 +65,32 @@ def parse_args():
 
     args = parser.parse_args()
 
-    return args.train_set, args.test_set, args.K, args.L, args.iterations, args.sampling, args.seed
+    return (
+        args.train_set,
+        args.test_set,
+        args.K,
+        args.L,
+        args.iterations,
+        args.sampling,
+        args.seed,
+    )
+
+
+def import_config(local=True):
+    yaml = YAML()
+    yaml.default_flow_style = False
+    yaml.preserve_quotes = True
+    yaml.boolean_representation = ["False", "True"]
+
+    if local:
+        with open("local_config.yml", "r") as yml_file:
+            cfg = yaml.load(yml_file)
+    else:
+        try:
+            with open("../config.yml", "r") as yml_file:
+                cfg = yaml.load(yml_file)
+        except FileNotFoundError:
+            with open("config.yml", "r") as yml_file:
+                cfg = yaml.load(yml_file)
+
+    return cfg

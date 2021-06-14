@@ -1,0 +1,17 @@
+data:
+  train: "u1.base"
+  test: "u1.test"
+
+training:
+  iterations: 400
+  sampling: 5
+  seed: 1714
+
+optimizer:
+  debug: true
+  study_name: mmsbm
+  trials: 40
+  min_user_groups: 1
+  max_user_groups: 30
+  min_item_groups: 1
+  max_item_groups: 30

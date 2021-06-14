@@ -1,2 +1,4 @@
 .ipynb_checkpoints
 .idea
+*.db
+local_config.yml
