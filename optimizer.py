@@ -30,14 +30,12 @@ class Optimizer:
             item_groups=item_groups,
             iterations=self.iterations,
             sampling=self.sampling,
-            seed=1714
+            seed=1714,
         )
 
     def optimize(self, n_trials):
         try:
-            self.study.optimize(
-                self._optimize_params, n_trials=n_trials
-            )
+            self.study.optimize(self._optimize_params, n_trials=n_trials)
         except KeyboardInterrupt:
             pass
         except Exception as e:
@@ -55,7 +53,7 @@ if __name__ == "__main__":
         study_name=study_name,
         storage="sqlite:///parameters.db",
         load_if_exists=True,
-        direction="maximize"
+        direction="maximize",
     )
 
     # Optimize

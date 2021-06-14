@@ -18,16 +18,26 @@ def update_coefs(data, ratings, theta, eta, pr):
     increments = np.array([a / b for (a, b) in zip(omegas, sum_omega)])
 
     n_theta = np.array(
-        [increments[np.where(data[:, 0] == a)].sum(-1).sum(0) for a in range(theta.shape[0])]
+        [
+            increments[np.where(data[:, 0] == a)].sum(-1).sum(0)
+            for a in range(theta.shape[0])
+        ]
     )
     n_eta = np.array(
-        [increments[np.where(data[:, 1] == a)].sum(0).sum(0) for a in range(eta.shape[0])]
+        [
+            increments[np.where(data[:, 1] == a)].sum(0).sum(0)
+            for a in range(eta.shape[0])
+        ]
     )
     n_pr = np.swapaxes(
         np.swapaxes(
             np.array([increments[np.where(data[:, 2] == a)].sum(0) for a in ratings]),
-            0, 1),
-        1, 2)
+            0,
+            1,
+        ),
+        1,
+        2,
+    )
 
     return n_theta, n_eta, n_pr
 
@@ -39,7 +49,9 @@ def normalize_with_d(df, d):
 def normalize_with_self(df):
     # This function should generalize better (TODO)
     temp = df.reshape((df.shape[0] * df.shape[1], df.shape[2]))
-    return (temp / (np.where(temp.sum(axis=1) == 0, 1, temp.sum(axis=1)))[:, np.newaxis]).reshape(df.shape)
+    return (
+        temp / (np.where(temp.sum(axis=1) == 0, 1, temp.sum(axis=1)))[:, np.newaxis]
+    ).reshape(df.shape)
 
 
 def compute_likelihood(data, ratings, theta, eta, pr):
@@ -49,8 +61,10 @@ def compute_likelihood(data, ratings, theta, eta, pr):
 
 def prod_dist(x, theta, eta, pr):
     return (
-      theta[x[0]][:, np.newaxis, np.newaxis] * (eta[x[1], :][:, np.newaxis] * pr)
-    ).sum(axis=0).sum(axis=0)
+        (theta[x[0]][:, np.newaxis, np.newaxis] * (eta[x[1], :][:, np.newaxis] * pr))
+        .sum(axis=0)
+        .sum(axis=0)
+    )
 
 
 def compute_prod_dist(data, theta, eta, pr):
@@ -71,7 +85,7 @@ def compute_indicators(rat, test, ratings):
     rat = rat.assign(real=pd.Series(test[:, 2]))
 
     # Remove observations without predictions
-    rat = rat.loc[rat.iloc[:, :len(ratings)].sum(axis=1) != 0, :]
+    rat = rat.loc[rat.iloc[:, : len(ratings)].sum(axis=1) != 0, :]
 
     # Check the ones we got right
     rat["true"] = np.where(rat["pred"] == rat["real"], 1, 0)
@@ -81,7 +95,9 @@ def compute_indicators(rat, test, ratings):
 
     # Same but weighed
     # Note that we are assuming that weights are the first R columns
-    rat["pred_pond"] = [weighting(a, ratings) for a in rat.iloc[:, :len(ratings)].values]
+    rat["pred_pond"] = [
+        weighting(a, ratings) for a in rat.iloc[:, : len(ratings)].values
+    ]
     rat["true_pond"] = np.where(rat["real"] == round(rat["pred_pond"]), 1, 0)
     rat["s2pond"] = abs(rat["pred_pond"] - rat["real"])
 
