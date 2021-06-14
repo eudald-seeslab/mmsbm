@@ -39,17 +39,18 @@ The script prints out the model goodness of fit parameters.
 
 #### Jupyter notebook
 
-Furthermore, you can use the Runner.ipynb notebook. It calls the same script as
-run.py, but it returns the goodness of fit parameters and the predictions. You 
-can then use those, for example, to check convergence of the model parameters.
+Otherwise, you can use the Runner.ipynb notebook. It calls the same script as
+run.py, but it returns the goodness of fit parameters, the model coefficients 
+(probability distributions (Pr)) and the predictions. You can then use those, 
+for example, to check convergence of the model parameters.
 
 #### Optimizer
 
-If you want to explore and try to find the optimal user and item groups, you 
-can do this with the optimizer. To use it, you first need to make a copy of the
-`config.yml` file and call it `local_config.yml`. In here you can set both the 
-optimizing and training parameters, as well as the number of runs. Make sure 
-you name each study differently if you change the parameters, otherwise the 
+If you want to explore and try to find the optimal number if user and item 
+groups, you can do this with the optimizer. To use it, you first need to make a 
+copy of the`config.yml` file and call it `local_config.yml`. In here you can set 
+both the optimizing and training parameters, as well as the number of runs. Make 
+sure you name each study differently if you change the parameters, otherwise the 
 hyperparameter optimization will go crazy.
 
 After the optimization is complete, you will get the parameters of the best run
@@ -72,9 +73,11 @@ optuna-dashboard sqlite:///parameters.db
 
 Each iteration takes a little less than a second in my Intel i7. This means that a
 400 iteration runs takes around 6 minutes and a half. The computation 
-is vectorized and parallelized over sampling, so, if you choose less sampling
-than number of cores, you should have approximately the same performance regardless
-of sampling size.
+is vectorized, so, as long as you don't go crazy with the number of observations, 
+ the time should be approximately the same regardless of training set size. 
+It is also parallelized over sampling, so, as long as you choose less sampling
+than number of cores, you should have approximately the same performance 
+regardless of training set size and sampling number.
 
 A complete study could be something like 100 hyperparameter optimization runs
 of 6 samples of 400 iterations, which will take about 10 hours. 
@@ -87,7 +90,7 @@ There are a few tests, you can run them with:
 python -m unittest discover
 ```
 
-Note: I don't know if they work anymore. 
+*Note*: I don't know if they work anymore. 
 
 ## TODO
 
