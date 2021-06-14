@@ -8,6 +8,7 @@ training:
   seed: 1714
 
 optimizer:
+  debug: true
   study_name: mmsbm
   trials: 40
   min_user_groups: 1

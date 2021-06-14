@@ -1,3 +1,5 @@
+import logging
+
 import optuna
 
 from lib.mmsbm import mmsbm
@@ -6,6 +8,7 @@ from lib.utils import import_config
 
 class Optimizer:
     def __init__(self, optuna_study, cfg):
+        debug = cfg["optimizer"]["debug"]
         self.min_k = cfg["optimizer"]["min_user_groups"]
         self.max_k = cfg["optimizer"]["max_user_groups"]
         self.min_l = cfg["optimizer"]["min_item_groups"]
@@ -16,6 +19,12 @@ class Optimizer:
         self.sampling = cfg["training"]["sampling"]
         self.seed = cfg["training"]["seed"]
         self.study = optuna_study
+
+        if debug:
+            self.iterations = 10
+            self.sampling = 2
+            logger = logging.getLogger("MMSBM")
+            logger.warning("Look out, you are debugging")
 
     def _optimize_params(self, trial):
         # Number of groups of users
@@ -46,7 +55,9 @@ if __name__ == "__main__":
     # Get parameters
     config = import_config(local=True)
     study_name = config["optimizer"]["study_name"]
-    num_trials = config["training"]["trials"]
+    num_trials = config["optimizer"]["trials"]
+    if config["optimizer"]["debug"]:
+        study_name = f"{study_name}_debug"
 
     # Set up the study
     study = optuna.create_study(

@@ -10,7 +10,7 @@ from lib.funcs import compute_indicators, compute_final_stats, normalize_with_d,
     update_coefs, compute_likelihood, compute_prod_dist
 
 
-def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, seed):
+def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, seed, notebook=False):
     start_time = datetime.now()
 
     # Initiate the random state
@@ -96,7 +96,10 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
     )
 
     # In case we are running from a notebook and we want to inspect the results
-    return accuracy
+    if notebook:
+        return prs, accuracy, mae, s2, s2pond, rat
+    else:
+        return accuracy
 
 
 def run_one_sampling(d0, d1, p, m, r, user_groups, item_groups, iterations, train, test, ratings, seed, i, return_dict):
