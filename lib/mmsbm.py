@@ -6,11 +6,29 @@ from datetime import datetime
 import numpy as np
 from tqdm import tqdm
 
-from lib.funcs import compute_indicators, compute_final_stats, normalize_with_d, init_random_array, normalize_with_self, \
-    update_coefs, compute_likelihood, compute_prod_dist
+from lib.funcs import (
+    compute_indicators,
+    compute_final_stats,
+    normalize_with_d,
+    init_random_array,
+    normalize_with_self,
+    update_coefs,
+    compute_likelihood,
+    compute_prod_dist,
+)
+from lib.utils import get_data, check_data
 
 
-def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, seed, notebook=False):
+def mmsbm(
+    train_set,
+    test_set,
+    user_groups,
+    item_groups,
+    iterations,
+    sampling,
+    seed,
+    notebook=False,
+):
     start_time = datetime.now()
 
     # Initiate the random state
@@ -24,15 +42,10 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
 
     # Get data
     data_dir = os.path.join(os.getcwd(), "data")
-    train = np.genfromtxt(
-        os.path.join(data_dir, train_set),
-        delimiter="\t",
-        usecols=[0, 1, 2],
-        dtype="int",
-    )
-    test = np.genfromtxt(
-        os.path.join(data_dir, test_set), delimiter="\t", usecols=[0, 1, 2], dtype="int"
-    )
+    train = get_data(os.path.join(data_dir, train_set))
+    check_data(train)
+    test = get_data(os.path.join(data_dir, test_set))
+    check_data(train)
 
     # Create a few dicts with the relationships
     # TODO: think whether initialization with 0 is needed
@@ -42,7 +55,6 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
     [d1.update({a: list(train[train[:, 1] == a, 0])}) for a in set(train[:, 1])]
     ratings = sorted(set(train[:, 2]))
     r = len(ratings)
-    rat = np.zeros((test.shape[0], r))
     p = int(train[:, 0].max())
     m = int(train[:, 1].max())
 
@@ -95,33 +107,44 @@ def mmsbm(train_set, test_set, user_groups, item_groups, iterations, sampling, s
         f"We had an accuracy of {accuracy}, a MAE of {mae} and s2 and weighted s2 of {s2} and {s2pond:.0f}."
     )
 
-    # In case we are running from a notebook and we want to inspect the results
+    # In case we are running from a notebook, and we want to inspect the results
     if notebook:
         return prs, accuracy, mae, s2, s2pond, rat
     else:
         return accuracy
 
 
-def run_one_sampling(d0, d1, p, m, r, user_groups, item_groups, iterations, train, test, ratings, seed, i, return_dict):
+def run_one_sampling(
+    d0,
+    d1,
+    p,
+    m,
+    r,
+    user_groups,
+    item_groups,
+    iterations,
+    train,
+    test,
+    ratings,
+    seed,
+    i,
+    return_dict,
+):
     rng = np.random.default_rng(seed)
 
     # Generate random (but normalized) inits
-    theta = normalize_with_d(
-        init_random_array((p + 1, user_groups), rng), d0
-    )
-    eta = normalize_with_d(
-        init_random_array((m + 1, item_groups), rng), d1
-    )
-    pr = normalize_with_self(
-        init_random_array((user_groups, item_groups, r), rng)
-    )
+    theta = normalize_with_d(init_random_array((p + 1, user_groups), rng), d0)
+    eta = normalize_with_d(init_random_array((m + 1, item_groups), rng), d1)
+    pr = normalize_with_self(init_random_array((user_groups, item_groups, r), rng))
 
     # Do the work
     # We store the prs to check convergence
     prs = []
     for _ in tqdm(range(iterations)):
         # This is the crux of the script; please see funcs.py
-        n_theta, n_eta, npr = update_coefs(data=train, ratings=ratings, theta=theta, eta=eta, pr=pr)
+        n_theta, n_eta, npr = update_coefs(
+            data=train, ratings=ratings, theta=theta, eta=eta, pr=pr
+        )
 
         # Update with normalization
         theta = normalize_with_d(n_theta, d0)
