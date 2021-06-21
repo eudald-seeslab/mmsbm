@@ -2,3 +2,4 @@
 .idea
 *.db
 local_config.yml
+__pycache__
