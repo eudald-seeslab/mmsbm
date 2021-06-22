@@ -2,7 +2,7 @@ import logging
 
 import optuna
 
-from lib.mmsbm import mmsbm
+from lib.mmsbm import MMSBM
 from lib.utils import import_config
 
 
@@ -32,7 +32,7 @@ class Optimizer:
         # Number of groups of items
         item_groups = trial.suggest_int("l", self.min_l, self.max_l)
 
-        return mmsbm(
+        mmsbm = MMSBM(
             train_set=self.train,
             test_set=self.test,
             user_groups=user_groups,
@@ -41,6 +41,9 @@ class Optimizer:
             sampling=self.sampling,
             seed=1714,
         )
+        return_dict = mmsbm.process()
+
+        return mmsbm.postprocess(return_dict)
 
     def optimize(self, n_trials):
         try:
