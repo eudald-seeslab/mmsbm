@@ -25,5 +25,5 @@ if __name__ == "__main__":
         notebook=True
     )
     return_dict = mmsbm.process()
-    s_prs, accuracy, mae, s2, s2pond, rat, lkh = mmsbm.postprocess(return_dict)
+    s_prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta = mmsbm.postprocess(return_dict)
 
