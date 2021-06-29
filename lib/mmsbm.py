@@ -116,7 +116,7 @@ class MMSBM:
         if self.notebook:
             return prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta
         else:
-            return np.mean([a.sum() for a in lkh])
+            return accuracy
 
     def run_one_sampling(self, seed, i, return_dict):
         rng = np.random.default_rng(seed)
