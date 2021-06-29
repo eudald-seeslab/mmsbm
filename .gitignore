@@ -3,3 +3,5 @@
 *.db
 local_config.yml
 __pycache__
+.Rproj.user
+/mmsbm.Rproj
