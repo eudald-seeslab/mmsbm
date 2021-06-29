@@ -1,0 +1,84 @@
+---
+title: "Plots"
+author: "Eudald"
+date: "23/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+library(dplyr)
+library(readr)
+library(tibble)
+library(FactoMineR)
+library(factoextra)
+library(Rtsne)
+```
+
+
+```{r}
+df <- read_csv("data.csv")
+eta <- read_csv("output/eta.csv")
+theta <- read_csv("output/theta.csv") |>
+  select(-X1)
+prs0 <- read_csv("output/prs_0.csv")|>
+  select(-X1)
+prs1 <- read_csv("output/prs_1.csv")|>
+  select(-X1)
+prs2 <- read_csv("output/prs_2.csv")|>
+  select(-X1)
+prs3 <- read_csv("output/prs_3.csv")|>
+  select(-X1)
+prs4 <- read_csv("output/prs_4.csv")|>
+  select(-X1)
+```
+
+```{r}
+theta <- theta %>% 
+  mutate(group = max.col(.))
+```
+
+```{r}
+all <- df |> 
+  mutate(
+    student_id = as.character(student_id),
+    calculus = ifelse(is.na(calculus), mean(calculus, na.rm = T), calculus)
+    ) |> 
+  inner_join(theta |> rownames_to_column(), by = c("student_id" = "rowname"))
+```
+
+```{r, out.width="100%"}
+res.pca <- PCA(all |> select(response_behaviour:emotion),  graph = FALSE)
+fviz_pca_biplot(res.pca,
+             label = "var", # hide individual labels
+             habillage = as.factor(all$group), # color by groups
+             addEllipses = F # Concentration ellipses
+             )
+```
+
+```{r, out.width="100%"}
+
+tsne <-
+  Rtsne(
+    as.matrix(all |> select(response_behaviour:emotion)),
+    check_duplicates = FALSE,
+    pca = FALSE,
+    perplexity = 50,
+    theta = 0.5,
+    dims = 2
+  )
+
+```
+
+```{r}
+as.data.frame(tsne$Y) |> 
+  bind_cols("group" = as.factor(all$group)) |> 
+  ggplot(aes(x=V1, y=V2, colour = group)) +  
+    geom_point() +
+    xlab("") + ylab("") +
+    ggtitle("Representació de t-SNE") +
+    theme_light(base_size=20) +
+    theme(axis.text.x=element_blank(),
+          axis.text.y=element_blank())
+```
+
