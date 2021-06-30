@@ -30,5 +30,5 @@ class TestFuncs(TestCase):
 
     def test_prod_dist(self):
         np.testing.assert_almost_equal(
-            compute_prod_dist(self.test, self.theta, self.eta, self.pr, self.sampling), self.rat
+            compute_prod_dist(self.test, self.theta, self.eta, self.pr), self.rat
         )
