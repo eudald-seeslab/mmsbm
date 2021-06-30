@@ -8,6 +8,8 @@ if __name__ == "__main__":
     (
         train_set,
         test_set,
+        _,
+        _,
         user_groups,
         item_groups,
         iterations,

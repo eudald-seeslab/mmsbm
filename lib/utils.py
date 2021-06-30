@@ -13,7 +13,7 @@ def parse_args():
         dest="train_set",
         type=str,
         help="Train set file name inside 'data' directory.",
-        required=True,
+        required=False,
     )
     parser.add_argument(
         "-e",
@@ -21,7 +21,24 @@ def parse_args():
         dest="test_set",
         type=str,
         help="Test set file name inside 'data' directory.",
-        required=True,
+        required=False,
+    )
+    parser.add_argument(
+        "-d",
+        "--data",
+        dest="data",
+        type=str,
+        help="Data file name inside 'data' directory. You also need to specify "
+             "the number of folds for cross-validation you want.",
+        required=False,
+    )
+    parser.add_argument(
+        "-n",
+        "--n_folds",
+        dest="n_folds",
+        type=int,
+        help="Number of folds for cross-validation. This goes together with data.",
+        required=False,
     )
     parser.add_argument(
         "-k",
@@ -68,6 +85,8 @@ def parse_args():
     return (
         args.train_set,
         args.test_set,
+        args.data,
+        args.n_folds,
         args.K,
         args.L,
         args.iterations,
@@ -94,5 +113,3 @@ def import_config(local=True):
                 cfg = yaml.load(yml_file)
 
     return cfg
-
-
