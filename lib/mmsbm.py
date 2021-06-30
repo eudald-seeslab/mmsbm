@@ -16,10 +16,12 @@ from lib.funcs import (
     compute_likelihood,
     compute_prod_dist,
 )
-from lib.utils import get_data, check_data
+from lib.dataHandler import DataHandler
 
 
 class MMSBM:
+    data_handler = None
+
     def __init__(
         self,
         train_set,
@@ -44,25 +46,22 @@ class MMSBM:
 
         # Get data
         data_dir = os.path.join(os.getcwd(), "data")
-        train = get_data(os.path.join(data_dir, train_set))
-        check_data(train)
-        test = get_data(os.path.join(data_dir, test_set))
-        check_data(train)
+        self.data_handler = DataHandler(data_dir, train_set, test_set)
+        train, test = self.data_handler.import_data()
 
         # Create a few dicts with the relationships
-        # TODO: think whether initialization with 0 is needed
-        d0 = {0: []}
-        d1 = {0: []}
+        d0 = {}
+        d1 = {}
         [d0.update({a: list(train[train[:, 0] == a, 1])}) for a in set(train[:, 0])]
         [d1.update({a: list(train[train[:, 1] == a, 0])}) for a in set(train[:, 1])]
         self.ratings = sorted(set(train[:, 2]))
-        self.r = len(self.ratings)
+        self.r = max(self.ratings)
         self.p = int(train[:, 0].max())
         self.m = int(train[:, 1].max())
 
         # If, for some reason, there are missing links, we need to fill them:
-        [d0.update({a: []}) for a in set(range(self.p + 1)).difference(set(d0.keys()))]
-        [d1.update({a: []}) for a in set(range(self.m + 1)).difference(set(d1.keys()))]
+        [d0.update({a: []}) for a in set(range(self.p)).difference(set(d0.keys()))]
+        [d1.update({a: []}) for a in set(range(self.m)).difference(set(d1.keys()))]
 
         self.train = train
         self.test = test
@@ -91,33 +90,6 @@ class MMSBM:
 
         return return_dict
 
-    def postprocess(self, return_dict):
-
-        rat = np.array([a["rat"] for a in return_dict.values()]).mean(axis=0)
-        prs = [a["prs"] for a in return_dict.values()]
-        lkh = [a["likelihood"] for a in return_dict.values()]
-        theta = [a["theta"] for a in return_dict.values()]
-        eta = [a["eta"] for a in return_dict.values()]
-
-        # How did we do?
-        rat = compute_indicators(rat, self.test, self.ratings)
-        # Final model quality indicators
-        accuracy, mae, s2, s2pond = compute_final_stats(rat)
-
-        final_time = datetime.now()
-        self.logger.info(
-            f"Done {self.sampling} runs in {(final_time - self.start_time).total_seconds() / 60.0:.2f} minutes."
-        )
-        self.logger.info(
-            f"We had an accuracy of {accuracy}, a MAE of {mae} and s2 and weighted s2 of {s2} and {s2pond:.0f}."
-        )
-
-        # In case we are running from a notebook, and we want to inspect the results
-        if self.notebook:
-            return prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta
-        else:
-            return accuracy
-
     def run_one_sampling(self, seed, i, return_dict):
         rng = np.random.default_rng(seed)
 
@@ -129,7 +101,7 @@ class MMSBM:
             init_random_array((self.m + 1, self.item_groups), rng), self.d1
         )
         pr = normalize_with_self(
-            init_random_array((self.user_groups, self.item_groups, self.r), rng)
+            init_random_array((self.user_groups, self.item_groups, self.r + 1), rng)
         )
 
         # Do the work
@@ -163,3 +135,36 @@ class MMSBM:
         return_dict[i] = {"likelihood": likelihood, "rat": rat, "prs": prs, "theta": theta, "eta": eta}
 
         return None
+
+    def postprocess(self, return_dict):
+
+        rat = np.array([a["rat"] for a in return_dict.values()]).mean(axis=0)
+        # FIXME: ths is stored every iteration:
+        prs = np.array([a["prs"] for a in return_dict.values()]).mean(axis=0).mean(axis=0)
+        lkh = np.array([a["likelihood"] for a in return_dict.values()]).mean(axis=0)
+        theta = np.array([a["theta"] for a in return_dict.values()]).mean(axis=0)
+        eta = np.array([a["eta"] for a in return_dict.values()]).mean(axis=0)
+
+        # How did we do?
+        rat = compute_indicators(rat, self.test, self.ratings)
+        # Final model quality indicators
+        accuracy, mae, s2, s2pond = compute_final_stats(rat)
+
+        # Return the original indices
+        theta = self.data_handler.return_theta_indices(theta)
+        eta = self.data_handler.return_theta_indices(eta)
+        prs = self.data_handler.return_pr_indices(prs)
+
+        final_time = datetime.now()
+        self.logger.info(
+            f"Done {self.sampling} runs in {(final_time - self.start_time).total_seconds() / 60.0:.2f} minutes."
+        )
+        self.logger.info(
+            f"We had an accuracy of {accuracy}, a MAE of {mae} and s2 and weighted s2 of {s2} and {s2pond:.0f}."
+        )
+
+        # In case we are running from a notebook, and we want to inspect the results
+        if self.notebook:
+            return prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta
+        else:
+            return accuracy

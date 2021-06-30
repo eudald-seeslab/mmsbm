@@ -7,7 +7,7 @@ def init_random_array(shape, rng):
 
 
 def compute_omega(x, theta, eta, pr, ratings):
-    return theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ratings.index(x[2])])
+    return theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ratings[x[2]]])
 
 
 def update_coefs(data, ratings, theta, eta, pr):
@@ -76,10 +76,9 @@ def weighting(x, ratings):
 
 
 def compute_indicators(rat, test, ratings):
-    rat = pd.DataFrame(rat)
 
-    # Note the + 1
-    rat["pred"] = np.argmax(rat.values, axis=1) + 1
+    rat = pd.DataFrame(rat)
+    rat["pred"] = np.argmax(rat.values, axis=1)
 
     # Add the real results
     rat = rat.assign(real=pd.Series(test[:, 2]))

@@ -1,7 +1,5 @@
 import argparse
-import os
 
-import numpy as np
 from ruamel.yaml import YAML
 
 
@@ -98,18 +96,3 @@ def import_config(local=True):
     return cfg
 
 
-def get_data(path_):
-    # Guess the type
-    # TODO: make this a little better; maybe with mimetypes.guess_extension?
-    _, extension = os.path.splitext(path_)
-    if extension == ".csv":
-        delimiter = ","
-    else:
-        delimiter = "\t"
-
-    # Deliver the dataset
-    return np.genfromtxt(path_, delimiter=delimiter, usecols=[0, 1, 2], dtype="int")
-
-
-def check_data(df):
-    assert np.isnan(df).sum() == 0, "Data contains missing values. Aborting."
