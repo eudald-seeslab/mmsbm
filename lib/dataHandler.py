@@ -25,7 +25,7 @@ class DataHandler:
     def _rename_values(x):
         values = set(x)
         dict_ = {}
-        _ = [dict_.update({str(b): str(a)}) for (a, b) in zip(range(len(values)), values)]
+        _ = [dict_.update({str(b): a}) for (a, b) in zip(range(len(values)), values)]
         return [dict_[str(a)] for a in x], dict_
 
     def parse_train_data(self, df):

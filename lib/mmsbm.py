@@ -107,7 +107,7 @@ class MMSBM:
         # Do the work
         # We store the prs to check convergence
         prs = []
-        for i in tqdm(range(self.iterations)):
+        for j in tqdm(range(self.iterations)):
             # This is the crux of the script; please see funcs.py
             n_theta, n_eta, npr = update_coefs(
                 data=self.train, ratings=self.ratings, theta=theta, eta=eta, pr=pr
@@ -123,7 +123,7 @@ class MMSBM:
 
             """
             # For debugging purposes; compute likelihood every once in a while
-            if i % 50 == 0:
+            if j % 50 == 0:
                 likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
                 # FIXME: convert to logger
                 print(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
