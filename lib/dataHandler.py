@@ -15,7 +15,7 @@ class DataHandler:
 
     @staticmethod
     def _get_data(path_):
-        return pd.read_csv(path_, sep=None, usecols=[0, 1, 2], engine="python", header=None)
+        return pd.read_csv(path_, sep=None, usecols=[0, 1, 2], engine="python")
 
     @staticmethod
     def _check_data(df):
@@ -25,8 +25,8 @@ class DataHandler:
     def _rename_values(x):
         values = set(x)
         dict_ = {}
-        _ = [dict_.update({b: a}) for (a, b) in zip(range(len(values)), values)]
-        return [dict_[a] for a in x], dict_
+        _ = [dict_.update({str(b): str(a)}) for (a, b) in zip(range(len(values)), values)]
+        return [dict_[str(a)] for a in x], dict_
 
     def parse_train_data(self, df):
         # This is kind of weird, but the idea is that there might be more
@@ -39,9 +39,9 @@ class DataHandler:
         return df.values
 
     def parse_test_data(self, df):
-        df.iloc[:, 0] = [self.obs_dict[a] for a in df.iloc[:, 0]]
-        df.iloc[:, 1] = [self.items_dict[a] for a in df.iloc[:, 1]]
-        df.iloc[:, 2] = [self.ratings_dict[a] for a in df.iloc[:, 2]]
+        df.iloc[:, 0] = [self.obs_dict[str(a)] for a in df.iloc[:, 0]]
+        df.iloc[:, 1] = [self.items_dict[str(a)] for a in df.iloc[:, 1]]
+        df.iloc[:, 2] = [self.ratings_dict[str(a)] for a in df.iloc[:, 2]]
 
         return df.values
 
