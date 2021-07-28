@@ -152,7 +152,7 @@ class MMSBM:
 
         # Return the original indices
         theta = self.data_handler.return_theta_indices(theta)
-        eta = self.data_handler.return_theta_indices(eta)
+        eta = self.data_handler.return_eta_indices(eta)
         prs = self.data_handler.return_pr_indices(prs)
 
         final_time = datetime.now()
