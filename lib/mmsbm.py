@@ -32,6 +32,7 @@ class MMSBM:
         sampling,
         seed,
         notebook=False,
+        debug=False,
     ):
         self.start_time = datetime.now()
 
@@ -72,6 +73,7 @@ class MMSBM:
         self.item_groups = item_groups
         self.iterations = iterations
         self.notebook = notebook
+        self.debug = debug
 
     def process(self):
         manager = multiprocessing.Manager()
@@ -106,7 +108,6 @@ class MMSBM:
 
         # Do the work
         # We store the prs to check convergence
-        prs = []
         for j in tqdm(range(self.iterations)):
             # This is the crux of the script; please see funcs.py
             n_theta, n_eta, npr = update_coefs(
@@ -118,29 +119,23 @@ class MMSBM:
             eta = normalize_with_d(n_eta, self.d1)
             pr = normalize_with_self(npr)
 
-            # This can be removed when not debugging
-            prs.append(pr)
-
-            """
-            # For debugging purposes; compute likelihood every once in a while
-            if j % 50 == 0:
-                likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
-                # FIXME: convert to logger
-                print(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
-            """
+            if self.debug:
+                # For debugging purposes; compute likelihood every once in a while
+                if j % 50 == 0:
+                    likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
+                    self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
 
         likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
         rat = compute_prod_dist(self.test, theta, eta, pr)
 
-        return_dict[i] = {"likelihood": likelihood, "rat": rat, "prs": prs, "theta": theta, "eta": eta}
+        return_dict[i] = {"likelihood": likelihood, "rat": rat, "pr": pr, "theta": theta, "eta": eta}
 
         return None
 
     def postprocess(self, return_dict):
 
         rat = np.array([a["rat"] for a in return_dict.values()]).mean(axis=0)
-        # FIXME: ths is stored every iteration:
-        prs = np.array([a["prs"] for a in return_dict.values()]).mean(axis=0).mean(axis=0)
+        pr = np.array([a["pr"] for a in return_dict.values()]).mean(axis=0)
         lkh = np.array([a["likelihood"] for a in return_dict.values()]).mean(axis=0)
         theta = np.array([a["theta"] for a in return_dict.values()]).mean(axis=0)
         eta = np.array([a["eta"] for a in return_dict.values()]).mean(axis=0)
@@ -153,7 +148,7 @@ class MMSBM:
         # Return the original indices
         theta = self.data_handler.return_theta_indices(theta)
         eta = self.data_handler.return_eta_indices(eta)
-        prs = self.data_handler.return_pr_indices(prs)
+        prs = self.data_handler.return_pr_indices(pr)
 
         final_time = datetime.now()
         self.logger.info(
