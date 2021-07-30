@@ -132,23 +132,47 @@ class MMSBM:
 
         return None
 
-    def postprocess(self, return_dict):
-
-        rat = np.array([a["rat"] for a in return_dict.values()]).mean(axis=0)
-        pr = np.array([a["pr"] for a in return_dict.values()]).mean(axis=0)
-        lkh = np.array([a["likelihood"] for a in return_dict.values()]).mean(axis=0)
-        theta = np.array([a["theta"] for a in return_dict.values()]).mean(axis=0)
-        eta = np.array([a["eta"] for a in return_dict.values()]).mean(axis=0)
-
+    @staticmethod
+    def compute_stats(rat, test, ratings):
         # How did we do?
-        rat = compute_indicators(rat, self.test, self.ratings)
+        rat = compute_indicators(rat, test, ratings)
         # Final model quality indicators
         accuracy, mae, s2, s2pond = compute_final_stats(rat)
 
-        # Return the original indices
-        theta = self.data_handler.return_theta_indices(theta)
-        eta = self.data_handler.return_eta_indices(eta)
-        prs = self.data_handler.return_pr_indices(pr)
+        return accuracy
+
+    def postprocess(self, return_dict):
+
+        # We have one of each for each sampling
+        rat = np.array([a["rat"] for a in return_dict.values()])
+        pr = np.array([a["pr"] for a in return_dict.values()])
+        lkh = np.array([a["likelihood"] for a in return_dict.values()])
+        theta = np.array([a["theta"] for a in return_dict.values()])
+        eta = np.array([a["eta"] for a in return_dict.values()])
+
+        # We compute the accuracy of all of them
+        accuracies = [self.compute_stats(a, self.test, self.ratings) for a in rat]
+
+        # Check which one is best
+        best = accuracies.index(max(accuracies))
+        # Get pr, theta and eta and likelihood for the best one
+        best_pr = pr[best]
+        best_theta = theta[best]
+        best_eta = eta[best]
+        best_lkh = lkh[best]
+
+        # Now average over rats to get a more robust prediction matrix
+        average_rat = rat.mean(axis=0)
+
+        # How did this final prediction do?
+        rat = compute_indicators(average_rat, self.test, self.ratings)
+        # Final model quality indicators
+        accuracy, mae, s2, s2pond = compute_final_stats(rat)
+
+        # Return the original indices (for the best values)
+        theta = self.data_handler.return_theta_indices(best_theta)
+        eta = self.data_handler.return_eta_indices(best_eta)
+        pr = self.data_handler.return_pr_indices(best_pr)
 
         final_time = datetime.now()
         self.logger.info(
@@ -160,6 +184,6 @@ class MMSBM:
 
         # In case we are running from a notebook, and we want to inspect the results
         if self.notebook:
-            return prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta
+            return pr, accuracy, mae, s2, s2pond, rat, best_lkh, theta, eta
         else:
             return accuracy
