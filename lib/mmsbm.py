@@ -4,11 +4,10 @@ import os
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 
-from lib.funcs import (
-    compute_indicators,
-    compute_final_stats,
+from lib.EM_functions import (
     normalize_with_d,
     init_random_array,
     normalize_with_self,
@@ -132,15 +131,6 @@ class MMSBM:
 
         return None
 
-    @staticmethod
-    def compute_stats(rat, test, ratings):
-        # How did we do?
-        rat = compute_indicators(rat, test, ratings)
-        # Final model quality indicators
-        accuracy, mae, s2, s2pond = compute_final_stats(rat)
-
-        return accuracy
-
     def postprocess(self, return_dict):
 
         # We have one of each for each sampling
@@ -151,31 +141,20 @@ class MMSBM:
         eta = np.array([a["eta"] for a in return_dict.values()])
 
         # We compute the accuracy of all of them
-        accuracies = [self.compute_stats(a, self.test, self.ratings) for a in rat]
+        accuracies = [self._compute_stats(a) for a in rat]
 
-        # Check which one is best and get the corresponding objects
+        # Check which one is best and get the corresponding objects with the original indices
         best = accuracies.index(max(accuracies))
-        best_pr = pr[best]
-        best_theta = theta[best]
-        best_eta = eta[best]
-        best_lkh = lkh[best]
+        theta = self.data_handler.return_theta_indices(theta[best])
+        eta = self.data_handler.return_eta_indices(eta[best])
+        pr = self.data_handler.return_pr_indices(pr[best])
 
-        # Now average over rats to get a more robust prediction matrix
-        average_rat = rat.mean(axis=0)
+        # Now average over rats to get a more robust prediction matrix and predict again
+        accuracy, mae, s2, s2pond = self._compute_stats(rat.mean(axis=0))
 
-        # How did this final prediction do?
-        rat = compute_indicators(average_rat, self.test, self.ratings)
-        # Final model quality indicators
-        accuracy, mae, s2, s2pond = compute_final_stats(rat)
-
-        # Return the original indices (for the best values)
-        theta = self.data_handler.return_theta_indices(best_theta)
-        eta = self.data_handler.return_eta_indices(best_eta)
-        pr = self.data_handler.return_pr_indices(best_pr)
-
-        final_time = datetime.now()
+        # Explain how we did
         self.logger.info(
-            f"Done {self.sampling} runs in {(final_time - self.start_time).total_seconds() / 60.0:.2f} minutes."
+            f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} minutes."
         )
         self.logger.info(
             f"We had an accuracy of {accuracy}, a MAE of {mae} and s2 and weighted s2 of {s2} and {s2pond:.0f}."
@@ -183,6 +162,57 @@ class MMSBM:
 
         # In case we are running from a notebook, and we want to inspect the results
         if self.notebook:
-            return pr, accuracy, mae, s2, s2pond, rat, best_lkh, theta, eta
+            return pr, accuracy, mae, s2, s2pond, rat, lkh[best], theta, eta
         else:
             return accuracy
+
+    def _compute_stats(self, rat):
+        # How did we do?
+        rat = self._compute_indicators(rat)
+        # Final model quality indicators
+        accuracy, mae, s2, s2pond = self._compute_final_stats(rat)
+
+        return accuracy
+
+    def _compute_indicators(self, rat):
+
+        rat = pd.DataFrame(rat)
+        rat["pred"] = np.argmax(rat.values, axis=1)
+
+        # Add the real results
+        rat = rat.assign(real=pd.Series(self.test[:, 2]))
+
+        # Remove observations without predictions
+        rat = rat.loc[rat.iloc[:, : len(self.ratings)].sum(axis=1) != 0, :]
+
+        # Check the ones we got right
+        rat["true"] = np.where(rat["pred"] == rat["real"], 1, 0)
+
+        # squared error (which is not squared error but ok)
+        rat["s2"] = abs(rat["pred"] - rat["real"])
+
+        # Same but weighed
+        # Note that we are assuming that weights are the first R columns
+        rat["pred_pond"] = [
+            self._weighting(a, self.ratings) for a in rat.iloc[:, : len(self.ratings)].values
+        ]
+        rat["true_pond"] = np.where(rat["real"] == round(rat["pred_pond"]), 1, 0)
+        rat["s2pond"] = abs(rat["pred_pond"] - rat["real"])
+
+        return rat
+
+    @staticmethod
+    def _compute_final_stats(rat):
+        # Final model quality indicators
+        accuracy = rat["true"].sum() / rat.shape[0]
+        mae = 1 - rat["true_pond"].sum() / rat.shape[0]
+
+        # Errors
+        s2 = rat["s2"].sum()
+        s2pond = rat["s2pond"].sum()
+
+        return accuracy, mae, s2, s2pond
+
+    @staticmethod
+    def _weighting(x, ratings):
+        return sum([a * b for (a, b) in zip(x, ratings)])
