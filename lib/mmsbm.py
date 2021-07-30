@@ -153,9 +153,8 @@ class MMSBM:
         # We compute the accuracy of all of them
         accuracies = [self.compute_stats(a, self.test, self.ratings) for a in rat]
 
-        # Check which one is best
+        # Check which one is best and get the corresponding objects
         best = accuracies.index(max(accuracies))
-        # Get pr, theta and eta and likelihood for the best one
         best_pr = pr[best]
         best_theta = theta[best]
         best_eta = eta[best]

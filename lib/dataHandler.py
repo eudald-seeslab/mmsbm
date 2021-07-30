@@ -1,6 +1,5 @@
 import os
 
-import numpy as np
 import pandas as pd
 
 
@@ -90,16 +89,3 @@ class DataHandler:
 
     def return_dicts(self):
         return self.obs_dict, self.items_dict, self.ratings_dict
-
-
-def DEPRECATED_get_data(path_):
-    # Deprecated
-    # TODO: remove
-    _, extension = os.path.splitext(path_)
-    if extension == ".csv":
-        delimiter = ","
-    else:
-        delimiter = "\t"
-
-    # Deliver the dataset
-    return np.genfromtxt(path_, delimiter=delimiter, usecols=[0, 1, 2], dtype="int")

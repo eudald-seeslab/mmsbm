@@ -11,7 +11,6 @@ def compute_omega(x, theta, eta, pr, ratings):
 
 
 def update_coefs(data, ratings, theta, eta, pr):
-    # Initialize the empty objects
 
     omegas = np.array([compute_omega(a, theta, eta, pr, ratings) for a in data])
     sum_omega = omegas.sum(axis=-1).sum(axis=-1)

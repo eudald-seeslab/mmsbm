@@ -8,7 +8,7 @@ from lib.utils import import_config
 
 class Optimizer:
     def __init__(self, optuna_study, cfg):
-        debug = cfg["optimizer"]["debug"]
+        self.debug = cfg["optimizer"]["debug"]
         self.min_k = cfg["optimizer"]["min_user_groups"]
         self.max_k = cfg["optimizer"]["max_user_groups"]
         self.min_l = cfg["optimizer"]["min_item_groups"]
@@ -20,7 +20,7 @@ class Optimizer:
         self.seed = cfg["training"]["seed"]
         self.study = optuna_study
 
-        if debug:
+        if self.debug:
             self.iterations = 10
             self.sampling = 2
             logger = logging.getLogger("MMSBM")
@@ -40,6 +40,8 @@ class Optimizer:
             iterations=self.iterations,
             sampling=self.sampling,
             seed=1714,
+            notebook=False,
+            debug=self.debug
         )
         return_dict = mmsbm.process()
 
