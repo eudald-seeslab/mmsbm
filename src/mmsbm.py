@@ -27,9 +27,9 @@ class MMSBM:
         test_set,
         user_groups,
         item_groups,
-        iterations,
-        sampling,
-        seed,
+        iterations=400,
+        sampling=1,
+        seed=1714,
         notebook=False,
         debug=False,
     ):
@@ -74,7 +74,7 @@ class MMSBM:
         self.notebook = notebook
         self.debug = debug
 
-    def train(self):
+    def fit(self):
         manager = multiprocessing.Manager()
         return_dict = manager.dict()
         jobs = []
@@ -141,7 +141,7 @@ class MMSBM:
 
         return None
 
-    def test(self, return_dict):
+    def compute_performance(self, return_dict):
 
         # We have one of each for each sampling
         rat = np.array([a["rat"] for a in return_dict.values()])
@@ -198,6 +198,9 @@ class MMSBM:
         # Check the ones we got right
         rat["true"] = np.where(rat["pred"] == rat["real"], 1, 0)
 
+        # Check the ones we got almost right
+        rat["almost"] = np.where(abs(rat["pred"] - rat["real"] <= 1, 1, 0))
+
         # squared error (which is not squared error but ok)
         rat["s2"] = abs(rat["pred"] - rat["real"])
 
@@ -216,13 +219,20 @@ class MMSBM:
     def _compute_final_stats(rat):
         # Final model quality indicators
         accuracy = rat["true"].sum() / rat.shape[0]
+        one_off_accuracy = rat["almost"].sum() / rat.shape[0]
         mae = 1 - rat["true_pond"].sum() / rat.shape[0]
 
         # Errors
         s2 = rat["s2"].sum()
         s2pond = rat["s2pond"].sum()
 
-        return accuracy, mae, s2, s2pond
+        return {
+            "accuracy": accuracy,
+            "one_off_accuracy": one_off_accuracy,
+            "mae": mae,
+            "s2": s2,
+            "s2pond": s2pond,
+        }
 
     @staticmethod
     def _weighting(x, ratings):
