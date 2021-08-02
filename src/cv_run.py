@@ -35,7 +35,7 @@ if __name__ == "__main__":
         "Please make the n_folds smaller that 9 since we" "only have 9 tests."
     )
 
-    path_ = os.path.join("data", data)
+    path_ = os.path.join("../data", data)
     df = pd.read_csv(path_, sep=None, usecols=[0, 1, 2], engine="python", header=None)
     df.columns = ["student", "test", "rating"]
 
@@ -64,8 +64,8 @@ if __name__ == "__main__":
         # Crate the train and test sets for each fold
         # FIXME: this is objectively sub-optimal, but otherwise I need to make
         #  a ton of changes.
-        train = df.iloc[train_indices, :].to_csv(os.path.join("data", TRAIN_NAME), index=False)
-        test = df.iloc[test_indices, :].to_csv(os.path.join("data", TEST_NAME), index=False)
+        train = df.iloc[train_indices, :].to_csv(os.path.join("../data", TRAIN_NAME), index=False)
+        test = df.iloc[test_indices, :].to_csv(os.path.join("../data", TEST_NAME), index=False)
 
         mmsbm = MMSBM(
             train_set=TRAIN_NAME,
