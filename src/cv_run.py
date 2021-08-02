@@ -64,8 +64,12 @@ if __name__ == "__main__":
         # Crate the train and test sets for each fold
         # FIXME: this is objectively sub-optimal, but otherwise I need to make
         #  a ton of changes.
-        train = df.iloc[train_indices, :].to_csv(os.path.join("../data", TRAIN_NAME), index=False)
-        test = df.iloc[test_indices, :].to_csv(os.path.join("../data", TEST_NAME), index=False)
+        train = df.iloc[train_indices, :].to_csv(
+            os.path.join("../data", TRAIN_NAME), index=False
+        )
+        test = df.iloc[test_indices, :].to_csv(
+            os.path.join("../data", TEST_NAME), index=False
+        )
 
         mmsbm = MMSBM(
             train_set=TRAIN_NAME,
@@ -78,9 +82,7 @@ if __name__ == "__main__":
             notebook=True,
         )
         return_dict = mmsbm.train()
-        s_prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta = mmsbm.test(
-            return_dict
-        )
+        s_prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta = mmsbm.test(return_dict)
         accuracies.append(accuracy)
 
     logger.info(f"Ran {n_folds} folds with accuracies {accuracies}.")

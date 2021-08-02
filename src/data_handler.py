@@ -1,6 +1,7 @@
 import os
 
 import pandas as pd
+from utils import _invert_dict
 
 
 class DataHandler:
@@ -45,11 +46,8 @@ class DataHandler:
         return df.values
 
     @staticmethod
-    def _invert_dict(d):
-        return {v: k for k, v in d.items()}
-
-    def return_original_indices(self, x, dict_):
-        return [self._invert_dict(dict_)[a] for a in x]
+    def return_original_indices(x, dict_):
+        return [_invert_dict(dict_)[a] for a in x]
 
     def return_theta_indices(self, theta):
         theta = pd.DataFrame(theta)
@@ -69,9 +67,7 @@ class DataHandler:
         #  originals.
         prs = {}
         [
-            prs.update(
-                {self._invert_dict(self.ratings_dict)[a]: pd.DataFrame(pr[:, :, a])}
-            )
+            prs.update({_invert_dict(self.ratings_dict)[a]: pd.DataFrame(pr[:, :, a])})
             for a in range(pr.shape[2])
         ]
 

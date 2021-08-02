@@ -7,15 +7,15 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from src.EM_functions import (
+from src.expectation_maximization import (
     normalize_with_d,
     init_random_array,
     normalize_with_self,
-    update_coefs,
+    update_coefficients,
     compute_likelihood,
     compute_prod_dist,
 )
-from src.dataHandler import DataHandler
+from src.data_handler import DataHandler
 
 
 class MMSBM:
@@ -109,7 +109,7 @@ class MMSBM:
         # We store the prs to check convergence
         for j in tqdm(range(self.iterations)):
             # This is the crux of the script; please see funcs.py
-            n_theta, n_eta, npr = update_coefs(
+            n_theta, n_eta, npr = update_coefficients(
                 data=self.train, ratings=self.ratings, theta=theta, eta=eta, pr=pr
             )
 
@@ -121,13 +121,23 @@ class MMSBM:
             if self.debug:
                 # For debugging purposes; compute likelihood every once in a while
                 if j % 50 == 0:
-                    likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
-                    self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
+                    likelihood = compute_likelihood(
+                        self.train, self.ratings, theta, eta, pr
+                    )
+                    self.logger.debug(
+                        f"\nLikelihood at run {i} is {likelihood.sum():.0f}"
+                    )
 
         likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
         rat = compute_prod_dist(self.test, theta, eta, pr)
 
-        return_dict[i] = {"likelihood": likelihood, "rat": rat, "pr": pr, "theta": theta, "eta": eta}
+        return_dict[i] = {
+            "likelihood": likelihood,
+            "rat": rat,
+            "pr": pr,
+            "theta": theta,
+            "eta": eta,
+        }
 
         return None
 
@@ -194,7 +204,8 @@ class MMSBM:
         # Same but weighed
         # Note that we are assuming that weights are the first R columns
         rat["pred_pond"] = [
-            self._weighting(a, self.ratings) for a in rat.iloc[:, : len(self.ratings)].values
+            self._weighting(a, self.ratings)
+            for a in rat.iloc[:, : len(self.ratings)].values
         ]
         rat["true_pond"] = np.where(rat["real"] == round(rat["pred_pond"]), 1, 0)
         rat["s2pond"] = abs(rat["pred_pond"] - rat["real"])

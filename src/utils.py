@@ -29,7 +29,7 @@ def parse_args():
         dest="data",
         type=str,
         help="Data file name inside 'data' directory. You also need to specify "
-             "the number of folds for cross-validation you want.",
+        "the number of folds for cross-validation you want.",
         required=False,
     )
     parser.add_argument(
@@ -113,3 +113,7 @@ def import_config(local=True):
                 cfg = yaml.load(yml_file)
 
     return cfg
+
+
+def _invert_dict(d):
+    return {v: k for k, v in d.items()}
