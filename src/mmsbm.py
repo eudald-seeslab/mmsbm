@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from lib.EM_functions import (
+from src.EM_functions import (
     normalize_with_d,
     init_random_array,
     normalize_with_self,
@@ -15,7 +15,7 @@ from lib.EM_functions import (
     compute_likelihood,
     compute_prod_dist,
 )
-from lib.dataHandler import DataHandler
+from src.dataHandler import DataHandler
 
 
 class MMSBM:

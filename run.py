@@ -1,5 +1,5 @@
-from lib.utils import parse_args
-from lib.mmsbm import MMSBM
+from src.utils import parse_args
+from src.mmsbm import MMSBM
 
 
 if __name__ == "__main__":

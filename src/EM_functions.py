@@ -1,7 +1,6 @@
 # These are the functions that carry out the Expectation-Maximization procedure
 
 import numpy as np
-import pandas as pd
 
 
 def init_random_array(shape, rng):

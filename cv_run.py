@@ -4,8 +4,8 @@ import os
 import numpy as np
 import pandas as pd
 
-from lib.utils import parse_args
-from lib.mmsbm import MMSBM
+from src.utils import parse_args
+from src.mmsbm import MMSBM
 
 
 TRAIN_NAME = "cv_train.csv"

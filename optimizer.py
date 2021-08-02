@@ -2,8 +2,8 @@ import logging
 
 import optuna
 
-from lib.mmsbm import MMSBM
-from lib.utils import import_config
+from src.mmsbm import MMSBM
+from src.utils import import_config
 
 
 class Optimizer:
