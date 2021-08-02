@@ -43,9 +43,9 @@ class Optimizer:
             notebook=False,
             debug=self.debug
         )
-        return_dict = mmsbm.process()
+        return_dict = mmsbm.train()
 
-        return mmsbm.postprocess(return_dict)
+        return mmsbm.test(return_dict)
 
     def optimize(self, n_trials):
         try:

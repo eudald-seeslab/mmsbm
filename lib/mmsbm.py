@@ -74,7 +74,7 @@ class MMSBM:
         self.notebook = notebook
         self.debug = debug
 
-    def process(self):
+    def train(self):
         manager = multiprocessing.Manager()
         return_dict = manager.dict()
         jobs = []
@@ -131,7 +131,7 @@ class MMSBM:
 
         return None
 
-    def postprocess(self, return_dict):
+    def test(self, return_dict):
 
         # We have one of each for each sampling
         rat = np.array([a["rat"] for a in return_dict.values()])

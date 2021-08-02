@@ -26,5 +26,5 @@ if __name__ == "__main__":
         seed=1714,
         notebook=True
     )
-    return_dict = mmsbm.process()
-    s_prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta = mmsbm.postprocess(return_dict)
+    return_dict = mmsbm.train()
+    s_prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta = mmsbm.test(return_dict)
