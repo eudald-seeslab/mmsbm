@@ -160,14 +160,19 @@ class MMSBM:
         pr = self.data_handler.return_pr_indices(pr[best])
 
         # Now average over rats to get a more robust prediction matrix and predict again
-        accuracy, mae, s2, s2pond = self._compute_stats(rat.mean(axis=0))
+        stats = self._compute_stats(rat.mean(axis=0))
+        accuracy = stats["accuracy"]
+        one_off_accuracy = stats["one_off_accuracy"]
+        mae = stats["mae"]
+        s2 = stats["s2"]
+        s2pond = stats["s2pond"]
 
         # Explain how we did
         self.logger.info(
             f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} minutes."
         )
         self.logger.info(
-            f"We had an accuracy of {accuracy}, a MAE of {mae} and s2 and weighted s2 of {s2} and {s2pond:.0f}."
+            f"We had an accuracy of {accuracy}, a one off accuracy of {one_off_accuracy} and a MAE of {mae}."
         )
 
         # In case we are running from a notebook, and we want to inspect the results
