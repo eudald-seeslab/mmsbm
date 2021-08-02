@@ -1,0 +1,12 @@
+include *.Rmd
+include *.html
+include *.ipynb
+include *.txt
+include *.yml
+recursive-include data *.base
+recursive-include data *.csv
+recursive-include data *.test
+recursive-include fixtures *.csv
+recursive-include output *.csv
+recursive-include src *.py
+recursive-include tests *.py
