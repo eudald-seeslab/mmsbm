@@ -1,6 +1,5 @@
 import logging
 import multiprocessing
-import os
 from datetime import datetime
 
 import numpy as np
@@ -20,7 +19,12 @@ from src.data_handler import DataHandler
 
 class MMSBM:
     data_handler = None
-    return_dict = None
+    results = None
+    test = None
+    theta = None
+    eta = None
+    pr = None
+    likelihood = None
 
     def __init__(
         self,
@@ -30,7 +34,6 @@ class MMSBM:
         iterations=400,
         sampling=1,
         seed=1714,
-        notebook=False,
         debug=False,
     ):
         self.start_time = datetime.now()
@@ -41,7 +44,7 @@ class MMSBM:
         self.seeds = list(rng.integers(low=1, high=10000, size=sampling))
 
         self.logger = logging.getLogger("MMSBM")
-        logging.basicConfig(level=logging.DEBUG if notebook else logging.INFO)
+        logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
         self.logger.info(f"Running {sampling} runs of {iterations} iterations.")
 
         # Get data
@@ -69,7 +72,6 @@ class MMSBM:
         self.user_groups = user_groups
         self.item_groups = item_groups
         self.iterations = iterations
-        self.notebook = notebook
         self.debug = debug
 
     def fit(self):
@@ -145,7 +147,10 @@ class MMSBM:
         self.test = test
 
         # Get the info for all the runs
-        rats = [compute_prod_dist(test, a["theta"], a["eta"], a["pr"]) for a in self.results.values()]
+        rats = [
+            compute_prod_dist(test, a["theta"], a["eta"], a["pr"])
+            for a in self.results.values()
+        ]
         prs = np.array([a["pr"] for a in self.results.values()])
         lkhs = np.array([a["likelihood"] for a in self.results.values()])
         thetas = np.array([a["theta"] for a in self.results.values()])
@@ -162,7 +167,6 @@ class MMSBM:
         # And return the average of the prediction matrices
         return np.array(rats).mean(axis=0)
 
-
     def choose_best_run(self, rats):
 
         # We compute the accuracy of all of them and return the index of the best
@@ -173,26 +177,21 @@ class MMSBM:
 
         # Now average over rats to get a more robust prediction matrix and predict again
         stats = self._compute_stats(rat)
-        accuracy = stats["accuracy"]
-        one_off_accuracy = stats["one_off_accuracy"]
-        mae = stats["mae"]
-        s2 = stats["s2"]
-        s2pond = stats["s2pond"]
+        stats["likelihood"] = self.likelihood
 
         # Explain how we did
         self.logger.info(
             f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} minutes."
         )
         self.logger.info(
-            f"We had an accuracy of {accuracy}, a one off accuracy of {one_off_accuracy} and a MAE of {mae}."
+            f"We had an accuracy of {stats['accuracy']}, a one off accuracy of {stats['one_off_accuracy']} "
+            f"and a MAE of {stats['mae']}."
         )
 
-        # In case we are running from a notebook, and we want to inspect the results
-        # FIXME: I don't like this
-        if self.notebook:
-            return accuracy, mae, s2, s2pond, rat, self.likelihood, self.theta, self.eta, self.pr
-        else:
-            return accuracy
+        return {
+            "stats": stats,
+            "objects": {"theta": self.theta, "eta": self.eta, "pr": self.pr},
+        }
 
     def _compute_stats(self, rat):
         # How did we do?

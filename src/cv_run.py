@@ -51,7 +51,9 @@ if __name__ == "__main__":
 
         # Get the correct indices
         test_indices = [
-            a[0] for a in temp.groupby("student", as_index=False).apply(get_one).values if a[0] != 0
+            a[0]
+            for a in temp.groupby("student", as_index=False).apply(get_one).values
+            if a[0] != 0
         ]
 
         train_indices = [a for a in df.index if a not in test_indices]
@@ -76,7 +78,6 @@ if __name__ == "__main__":
             iterations=iterations,
             sampling=sampling,
             seed=1714,
-            notebook=True,
         )
         return_dict = mmsbm.train()
         s_prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta = mmsbm.test(return_dict)

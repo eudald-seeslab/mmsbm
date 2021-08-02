@@ -40,7 +40,6 @@ class Optimizer:
             iterations=self.iterations,
             sampling=self.sampling,
             seed=1714,
-            notebook=False,
             debug=self.debug,
         )
         return_dict = mmsbm.train()
