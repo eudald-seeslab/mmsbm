@@ -17,8 +17,7 @@ if __name__ == "__main__":
         seed,
     ) = parse_args()
     mmsbm = MMSBM(
-        train_set=train_set,
-        test_set=test_set,
+        data=pd.read_csv("data/train_5.csv"),
         user_groups=user_groups,
         item_groups=item_groups,
         iterations=iterations,

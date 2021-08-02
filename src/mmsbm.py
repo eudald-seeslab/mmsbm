@@ -15,6 +15,7 @@ from src.expectation_maximization import (
     compute_prod_dist,
 )
 from src.data_handler import DataHandler
+from utils import get_one_per_group
 
 
 class MMSBM:
@@ -26,17 +27,13 @@ class MMSBM:
     pr = None
     likelihood = None
 
-    def __init__(
-        self,
-        data,
-        user_groups,
-        item_groups,
-        iterations=400,
-        sampling=1,
-        seed=1714,
-        debug=False,
-    ):
+    def __init__(self, user_groups, item_groups, iterations=400, sampling=1, seed=1714, debug=False):
         self.start_time = datetime.now()
+        self.user_groups = user_groups
+        self.item_groups = item_groups
+        self.iterations = iterations
+        self.sampling = sampling
+        self.debug = debug
 
         # Initiate the random state
         rng = np.random.default_rng(seed)
@@ -47,9 +44,7 @@ class MMSBM:
         logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
         self.logger.info(f"Running {sampling} runs of {iterations} iterations.")
 
-        # Get data
-        self.data_handler = DataHandler()
-        train = self.data_handler.format_train_data(data)
+    def _prepare_objects(self, train):
 
         # Create a few dicts with the relationships
         d0 = {}
@@ -68,20 +63,21 @@ class MMSBM:
         self.train = train
         self.d0 = d0
         self.d1 = d1
-        self.sampling = sampling
-        self.user_groups = user_groups
-        self.item_groups = item_groups
-        self.iterations = iterations
-        self.debug = debug
 
-    def fit(self):
+    def fit(self, data):
+
+        # Get data
+        self.data_handler = DataHandler()
+        train = self.data_handler.format_train_data(data)
+        self._prepare_objects(train)
+
         manager = multiprocessing.Manager()
         return_dict = manager.dict()
         jobs = []
         for i in range(self.sampling):
             proc = multiprocessing.Process(
                 target=self.run_one_sampling,
-                args=(self.seeds[i], i, return_dict),
+                args=(train, self.seeds[i], i, return_dict),
             )
             jobs.append(proc)
             proc.start()
@@ -90,9 +86,10 @@ class MMSBM:
             proc.join()
 
         self.results = return_dict
-        return None
 
-    def run_one_sampling(self, seed, i, return_dict):
+        return return_dict
+
+    def run_one_sampling(self, data, seed, i, return_dict):
         rng = np.random.default_rng(seed)
 
         # Generate random (but normalized) inits
@@ -111,7 +108,7 @@ class MMSBM:
         for j in tqdm(range(self.iterations)):
             # This is the crux of the script; please see funcs.py
             n_theta, n_eta, npr = update_coefficients(
-                data=self.train, ratings=self.ratings, theta=theta, eta=eta, pr=pr
+                data=data, ratings=self.ratings, theta=theta, eta=eta, pr=pr
             )
 
             # Update with normalization
@@ -130,7 +127,6 @@ class MMSBM:
                     )
 
         likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
-        # rat = compute_prod_dist(self.test, theta, eta, pr)
 
         return_dict[i] = {
             "likelihood": likelihood,
@@ -152,7 +148,7 @@ class MMSBM:
             for a in self.results.values()
         ]
         prs = np.array([a["pr"] for a in self.results.values()])
-        lkhs = np.array([a["likelihood"] for a in self.results.values()])
+        likelihoods = np.array([a["likelihood"] for a in self.results.values()])
         thetas = np.array([a["theta"] for a in self.results.values()])
         etas = np.array([a["eta"] for a in self.results.values()])
 
@@ -162,7 +158,7 @@ class MMSBM:
         self.theta = self.data_handler.return_theta_indices(thetas[best])
         self.eta = self.data_handler.return_eta_indices(etas[best])
         self.pr = self.data_handler.return_pr_indices(prs[best])
-        self.likelihood = lkhs[best]
+        self.likelihood = likelihoods[best]
 
         # And return the average of the prediction matrices
         return np.array(rats).mean(axis=0)
@@ -254,3 +250,38 @@ class MMSBM:
     @staticmethod
     def _weighting(x, ratings):
         return sum([a * b for (a, b) in zip(x, ratings)])
+
+    def cv_fit(self, data, folds=5):
+
+        assert folds < 9, (
+            "Please make the n_folds smaller that 9 since we" "only have 9 tests."
+        )
+
+        accuracies = []
+        temp = data
+        leftover_indices = data.index
+
+        for n in range(folds):
+            self.logger.info(f"Running fold {n + 1} of {folds}...")
+
+            # Get the correct indices
+            test_indices = [
+                a[0]
+                for a in temp.groupby(temp.columns[0], as_index=False).apply(get_one_per_group).values
+                if a[0] != 0
+            ]
+
+            train_indices = [a for a in data.index if a not in test_indices]
+            leftover_indices = [a for a in leftover_indices if a not in test_indices]
+            temp = data.iloc[leftover_indices, :]
+
+            res = self.fit(data.iloc[train_indices, :])
+            pred_matrix = self.predict(data.iloc[test_indices, :])
+            results = self.score(pred_matrix)
+
+            accuracies.append(results["stats"]["accuracy"])
+
+        self.logger.info(f"Ran {folds} folds with accuracies {accuracies}.")
+        self.logger.info(f"They have mean {np.mean(accuracies)} and sd {np.std(accuracies)}.")
+
+        return accuracies

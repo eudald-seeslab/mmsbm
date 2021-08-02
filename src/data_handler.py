@@ -38,9 +38,13 @@ class DataHandler:
         return df.values
 
     def parse_test_data(self, df):
-        df.iloc[:, 0] = [self.obs_dict[str(a)] for a in df.iloc[:, 0]]
-        df.iloc[:, 1] = [self.items_dict[str(a)] for a in df.iloc[:, 1]]
-        df.iloc[:, 2] = [self.ratings_dict[str(a)] for a in df.iloc[:, 2]]
+        try:
+            df.iloc[:, 0] = [self.obs_dict[str(a)] for a in df.iloc[:, 0]]
+            df.iloc[:, 1] = [self.items_dict[str(a)] for a in df.iloc[:, 1]]
+            df.iloc[:, 2] = [self.ratings_dict[str(a)] for a in df.iloc[:, 2]]
+        except KeyError as e:
+            # FIXME!!!
+            pass
 
         return df.values
 

@@ -4,7 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from src.utils import parse_args
+from src.utils import parse_args, get_one_per_group
 from src.mmsbm import MMSBM
 
 
@@ -39,9 +39,6 @@ if __name__ == "__main__":
     df = pd.read_csv(path_, sep=None, usecols=[0, 1, 2], engine="python", header=None)
     df.columns = ["student", "test", "rating"]
 
-    def get_one(x):
-        return np.random.choice(x.index, 1, False)
-
     accuracies = []
     temp = df
     leftover_indices = df.index
@@ -52,7 +49,7 @@ if __name__ == "__main__":
         # Get the correct indices
         test_indices = [
             a[0]
-            for a in temp.groupby("student", as_index=False).apply(get_one).values
+            for a in temp.groupby(temp.columns[0], as_index=False).apply(get_one_per_group).values
             if a[0] != 0
         ]
 
@@ -60,28 +57,22 @@ if __name__ == "__main__":
         leftover_indices = [a for a in leftover_indices if a not in test_indices]
         temp = df.iloc[leftover_indices, :]
 
-        # Crate the train and test sets for each fold
-        # FIXME: this is objectively sub-optimal, but otherwise I need to make
-        #  a ton of changes.
-        train = df.iloc[train_indices, :].to_csv(
-            os.path.join("../data", TRAIN_NAME), index=False
-        )
-        test = df.iloc[test_indices, :].to_csv(
-            os.path.join("../data", TEST_NAME), index=False
-        )
+        # Crate the train and test sets for each fold.
+        train = df.iloc[train_indices, :]
+        test = df.iloc[test_indices, :]
 
         mmsbm = MMSBM(
-            train_set=TRAIN_NAME,
-            test_set=TEST_NAME,
             user_groups=user_groups,
             item_groups=item_groups,
             iterations=iterations,
             sampling=sampling,
             seed=1714,
         )
-        return_dict = mmsbm.train()
-        s_prs, accuracy, mae, s2, s2pond, rat, lkh, theta, eta = mmsbm.test(return_dict)
-        accuracies.append(accuracy)
+        mmsbm.fit(train)
+        pred_matrix = mmsbm.predict(test)
+        results = mmsbm.score(pred_matrix)
+
+        accuracies.append(results["stats"]["accuracy"])
 
     logger.info(f"Ran {n_folds} folds with accuracies {accuracies}.")
     logger.info(f"They have mean {np.mean(accuracies)} and sd {np.std(accuracies)}.")

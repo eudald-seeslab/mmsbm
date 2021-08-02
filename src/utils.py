@@ -1,5 +1,6 @@
 import argparse
 
+import numpy as np
 from ruamel.yaml import YAML
 
 
@@ -117,3 +118,7 @@ def import_config(local=True):
 
 def _invert_dict(d):
     return {v: k for k, v in d.items()}
+
+
+def get_one_per_group(x):
+    return np.random.choice(x.index, 1, False)
