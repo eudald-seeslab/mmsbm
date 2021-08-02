@@ -9,9 +9,8 @@ class DataHandler:
     items_dict = None
     ratings_dict = None
 
-    def __init__(self, data_dir, train_set, test_set):
-        self.train_set = os.path.join(data_dir, train_set)
-        self.test_set = os.path.join(data_dir, test_set)
+    def __init__(self):
+        pass
 
     @staticmethod
     def _get_data(path_):
@@ -74,6 +73,7 @@ class DataHandler:
         return prs
 
     def import_data(self):
+        # DEPRECTAED
         # Get data
         train = self._get_data(self.train_set)
         test = self._get_data(self.test_set)
@@ -82,6 +82,16 @@ class DataHandler:
         self._check_data(test)
         # Convert to usable indices
         return self.parse_train_data(train), self.parse_test_data(test)
+
+    def format_train_data(self, data):
+        self._check_data(data)
+
+        return self.parse_train_data(data)
+
+    def format_test_data(self, data):
+        self._check_data(data)
+
+        return self.parse_test_data(data)
 
     def return_dicts(self):
         return self.obs_dict, self.items_dict, self.ratings_dict

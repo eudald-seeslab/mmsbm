@@ -20,11 +20,11 @@ from src.data_handler import DataHandler
 
 class MMSBM:
     data_handler = None
+    return_dict = None
 
     def __init__(
         self,
-        train_set,
-        test_set,
+        data,
         user_groups,
         item_groups,
         iterations=400,
@@ -45,9 +45,8 @@ class MMSBM:
         self.logger.info(f"Running {sampling} runs of {iterations} iterations.")
 
         # Get data
-        data_dir = os.path.join(os.getcwd(), "data")
-        self.data_handler = DataHandler(data_dir, train_set, test_set)
-        train, test = self.data_handler.import_data()
+        self.data_handler = DataHandler()
+        train = self.data_handler.format_train_data(data)
 
         # Create a few dicts with the relationships
         d0 = {}
@@ -64,7 +63,6 @@ class MMSBM:
         [d1.update({a: []}) for a in set(range(self.m)).difference(set(d1.keys()))]
 
         self.train = train
-        self.test = test
         self.d0 = d0
         self.d1 = d1
         self.sampling = sampling
@@ -89,7 +87,8 @@ class MMSBM:
         for proc in jobs:
             proc.join()
 
-        return return_dict
+        self.results = return_dict
+        return None
 
     def run_one_sampling(self, seed, i, return_dict):
         rng = np.random.default_rng(seed)
@@ -129,11 +128,10 @@ class MMSBM:
                     )
 
         likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
-        rat = compute_prod_dist(self.test, theta, eta, pr)
+        # rat = compute_prod_dist(self.test, theta, eta, pr)
 
         return_dict[i] = {
             "likelihood": likelihood,
-            "rat": rat,
             "pr": pr,
             "theta": theta,
             "eta": eta,
@@ -141,26 +139,40 @@ class MMSBM:
 
         return None
 
-    def compute_performance(self, return_dict):
+    def predict(self, data):
 
-        # We have one of each for each sampling
-        rat = np.array([a["rat"] for a in return_dict.values()])
-        pr = np.array([a["pr"] for a in return_dict.values()])
-        lkh = np.array([a["likelihood"] for a in return_dict.values()])
-        theta = np.array([a["theta"] for a in return_dict.values()])
-        eta = np.array([a["eta"] for a in return_dict.values()])
+        test = self.data_handler.format_test_data(data)
+        self.test = test
 
-        # We compute the accuracy of all of them
-        accuracies = [self._compute_stats(a) for a in rat]
+        # Get the info for all the runs
+        rats = [compute_prod_dist(test, a["theta"], a["eta"], a["pr"]) for a in self.results.values()]
+        prs = np.array([a["pr"] for a in self.results.values()])
+        lkhs = np.array([a["likelihood"] for a in self.results.values()])
+        thetas = np.array([a["theta"] for a in self.results.values()])
+        etas = np.array([a["eta"] for a in self.results.values()])
 
-        # Check which one is best and get the corresponding objects with the original indices
-        best = accuracies.index(max(accuracies))
-        theta = self.data_handler.return_theta_indices(theta[best])
-        eta = self.data_handler.return_eta_indices(eta[best])
-        pr = self.data_handler.return_pr_indices(pr[best])
+        best = self.choose_best_run(rats)
+
+        # Store the cleaned best objects
+        self.theta = self.data_handler.return_theta_indices(thetas[best])
+        self.eta = self.data_handler.return_eta_indices(etas[best])
+        self.pr = self.data_handler.return_pr_indices(prs[best])
+        self.likelihood = lkhs[best]
+
+        # And return the average of the prediction matrices
+        return np.array(rats).mean(axis=0)
+
+
+    def choose_best_run(self, rats):
+
+        # We compute the accuracy of all of them and return the index of the best
+        accuracies = [self._compute_stats(a)["accuracy"] for a in rats]
+        return accuracies.index(max(accuracies))
+
+    def score(self, rat):
 
         # Now average over rats to get a more robust prediction matrix and predict again
-        stats = self._compute_stats(rat.mean(axis=0))
+        stats = self._compute_stats(rat)
         accuracy = stats["accuracy"]
         one_off_accuracy = stats["one_off_accuracy"]
         mae = stats["mae"]
@@ -176,8 +188,9 @@ class MMSBM:
         )
 
         # In case we are running from a notebook, and we want to inspect the results
+        # FIXME: I don't like this
         if self.notebook:
-            return pr, accuracy, mae, s2, s2pond, rat, lkh[best], theta, eta
+            return accuracy, mae, s2, s2pond, rat, self.likelihood, self.theta, self.eta, self.pr
         else:
             return accuracy
 
@@ -185,9 +198,9 @@ class MMSBM:
         # How did we do?
         rat = self._compute_indicators(rat)
         # Final model quality indicators
-        accuracy, mae, s2, s2pond = self._compute_final_stats(rat)
+        stats = self._compute_final_stats(rat)
 
-        return accuracy
+        return stats
 
     def _compute_indicators(self, rat):
 
@@ -204,7 +217,7 @@ class MMSBM:
         rat["true"] = np.where(rat["pred"] == rat["real"], 1, 0)
 
         # Check the ones we got almost right
-        rat["almost"] = np.where(abs(rat["pred"] - rat["real"] <= 1, 1, 0))
+        rat["almost"] = np.where(abs(rat["pred"] - rat["real"]) <= 1, 1, 0)
 
         # squared error (which is not squared error but ok)
         rat["s2"] = abs(rat["pred"] - rat["real"])
