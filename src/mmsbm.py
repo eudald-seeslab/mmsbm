@@ -26,8 +26,17 @@ class MMSBM:
     eta = None
     pr = None
     likelihood = None
+    prediction_matrix = None
 
-    def __init__(self, user_groups, item_groups, iterations=400, sampling=1, seed=1714, debug=False):
+    def __init__(
+        self,
+        user_groups,
+        item_groups,
+        iterations=400,
+        sampling=1,
+        seed=1714,
+        debug=False,
+    ):
         self.start_time = datetime.now()
         self.user_groups = user_groups
         self.item_groups = item_groups
@@ -86,8 +95,6 @@ class MMSBM:
             proc.join()
 
         self.results = return_dict
-
-        return return_dict
 
     def run_one_sampling(self, data, seed, i, return_dict):
         rng = np.random.default_rng(seed)
@@ -160,8 +167,10 @@ class MMSBM:
         self.pr = self.data_handler.return_pr_indices(prs[best])
         self.likelihood = likelihoods[best]
 
-        # And return the average of the prediction matrices
-        return np.array(rats).mean(axis=0)
+        # The prediction matrix is the average of all runs
+        self.prediction_matrix = np.array(rats).mean(axis=0)
+
+        return self.prediction_matrix
 
     def choose_best_run(self, rats):
 
@@ -169,20 +178,21 @@ class MMSBM:
         accuracies = [self._compute_stats(a)["accuracy"] for a in rats]
         return accuracies.index(max(accuracies))
 
-    def score(self, rat):
+    def score(self, silent=False):
 
         # Now average over rats to get a more robust prediction matrix and predict again
-        stats = self._compute_stats(rat)
+        stats = self._compute_stats(self.prediction_matrix)
         stats["likelihood"] = self.likelihood
 
-        # Explain how we did
-        self.logger.info(
-            f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} minutes."
-        )
-        self.logger.info(
-            f"We had an accuracy of {stats['accuracy']}, a one off accuracy of {stats['one_off_accuracy']} "
-            f"and a MAE of {stats['mae']}."
-        )
+        if not silent:
+            # Explain how we did
+            self.logger.info(
+                f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} minutes."
+            )
+            self.logger.info(
+                f"We had an accuracy of {stats['accuracy']}, a one off accuracy of {stats['one_off_accuracy']} "
+                f"and a MAE of {stats['mae']}."
+            )
 
         return {
             "stats": stats,
@@ -261,13 +271,16 @@ class MMSBM:
         temp = data
         leftover_indices = data.index
 
+        all_results = []
         for n in range(folds):
             self.logger.info(f"Running fold {n + 1} of {folds}...")
 
             # Get the correct indices
             test_indices = [
                 a[0]
-                for a in temp.groupby(temp.columns[0], as_index=False).apply(get_one_per_group).values
+                for a in temp.groupby(temp.columns[0], as_index=False)
+                .apply(get_one_per_group)
+                .values
                 if a[0] != 0
             ]
 
@@ -275,13 +288,35 @@ class MMSBM:
             leftover_indices = [a for a in leftover_indices if a not in test_indices]
             temp = data.iloc[leftover_indices, :]
 
-            res = self.fit(data.iloc[train_indices, :])
-            pred_matrix = self.predict(data.iloc[test_indices, :])
-            results = self.score(pred_matrix)
+            self.fit(data.iloc[train_indices, :])
+            self.prediction_matrix = self.predict(data.iloc[test_indices, :])
+            results = self.score(silent=True)
 
+            # We put together the best run for each of the s samplings of each fold
+            all_results.append(
+                {
+                    "stats": results["stats"],
+                    "objects": {
+                        "theta": self.theta,
+                        "eta": self.eta,
+                        "pr": self.pr,
+                        "rat": self.prediction_matrix,
+                    },
+                }
+            )
             accuracies.append(results["stats"]["accuracy"])
 
+        # Now we pick the best objects
+        accuracies = [a["stats"]["accuracy"] for a in all_results]
+        best = accuracies.index(max(accuracies))
+        self.theta = all_results[best]["objects"]["theta"]
+        self.eta = all_results[best]["objects"]["eta"]
+        self.pr = all_results[best]["objects"]["pr"]
+        self.prediction_matrix = all_results[best]["objects"]["rat"]
+
         self.logger.info(f"Ran {folds} folds with accuracies {accuracies}.")
-        self.logger.info(f"They have mean {np.mean(accuracies)} and sd {np.std(accuracies)}.")
+        self.logger.info(
+            f"They have mean {np.mean(accuracies)} and sd {np.std(accuracies)}."
+        )
 
         return accuracies

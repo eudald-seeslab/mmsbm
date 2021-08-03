@@ -1,7 +1,9 @@
-import os
+import logging
 
 import pandas as pd
 from utils import _invert_dict
+
+pd.options.mode.chained_assignment = None
 
 
 class DataHandler:
@@ -21,18 +23,27 @@ class DataHandler:
         assert df.isnull().sum().sum() == 0, "Data contains missing values. Aborting."
 
     @staticmethod
-    def _rename_values(x):
+    def _rename_values(x, dict_):
+        return [dict_[str(a)] for a in x]
+
+    @staticmethod
+    def _create_values_dict(x):
         values = set(x)
         dict_ = {}
-        _ = [dict_.update({str(b): a}) for (a, b) in zip(range(len(values)), values)]
-        return [dict_[str(a)] for a in x], dict_
+        [dict_.update({str(b): a}) for (a, b) in zip(range(len(values)), values)]
+
+        return dict_
 
     def parse_train_data(self, df):
         # This is kind of weird, but the idea is that there might be more
         #  than one train/test sets and then it'll come handy
-        df.iloc[:, 0], self.obs_dict = self._rename_values(df.iloc[:, 0])
-        df.iloc[:, 1], self.items_dict = self._rename_values(df.iloc[:, 1])
-        df.iloc[:, 2], self.ratings_dict = self._rename_values(df.iloc[:, 2])
+        self.obs_dict = self._create_values_dict(df.iloc[:, 0])
+        self.items_dict = self._create_values_dict(df.iloc[:, 1])
+        self.ratings_dict = self._create_values_dict(df.iloc[:, 2])
+
+        df.iloc[:, 0] = self._rename_values(df.iloc[:, 0], self.obs_dict)
+        df.iloc[:, 1] = self._rename_values(df.iloc[:, 1], self.items_dict)
+        df.iloc[:, 2] = self._rename_values(df.iloc[:, 2], self.ratings_dict)
 
         # Note that we are returning numpy arrays
         return df.values
@@ -76,24 +87,39 @@ class DataHandler:
 
         return prs
 
-    def import_data(self):
-        # DEPRECTAED
-        # Get data
-        train = self._get_data(self.train_set)
-        test = self._get_data(self.test_set)
-        # Check that everything is ok
-        self._check_data(train)
-        self._check_data(test)
-        # Convert to usable indices
-        return self.parse_train_data(train), self.parse_test_data(test)
-
     def format_train_data(self, data):
+        # Convert to strings
+        data = data.astype(str)
+
         self._check_data(data)
 
         return self.parse_train_data(data)
 
+    def _check_test_in_train(self, data):
+        test_users = set([str(a) for a in data.iloc[:, 0]])
+        train_users = set(self.obs_dict.keys())
+
+        dif = test_users.difference(train_users)
+        if len(dif):
+            logger = logging.getLogger("MMSBM")
+            logger.warning(
+                f"The observations {', '.join([str(i) for i in dif])} are in the test set but weren't in "
+                f"the train set so I'll remove them."
+            )
+
+            data = data[~data.iloc[:, 0].isin([a for a in dif])]
+
+        return data
+
     def format_test_data(self, data):
+        # Convert to strings
+        data = data.astype(str)
+
+        # Check that it's usable
         self._check_data(data)
+
+        # Check that all test "users" were also in train
+        data = self._check_test_in_train(data)
 
         return self.parse_test_data(data)
 

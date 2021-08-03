@@ -49,7 +49,9 @@ if __name__ == "__main__":
         # Get the correct indices
         test_indices = [
             a[0]
-            for a in temp.groupby(temp.columns[0], as_index=False).apply(get_one_per_group).values
+            for a in temp.groupby(temp.columns[0], as_index=False)
+            .apply(get_one_per_group)
+            .values
             if a[0] != 0
         ]
 
