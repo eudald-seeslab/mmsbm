@@ -51,7 +51,6 @@ class MMSBM:
 
         self.logger = logging.getLogger("MMSBM")
         logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
-        self.logger.info(f"Running {sampling} runs of {iterations} iterations.")
 
     def _prepare_objects(self, train):
 
@@ -74,6 +73,10 @@ class MMSBM:
         self.d1 = d1
 
     def fit(self, data):
+
+        self.logger.info(
+            f"Running {self.sampling} runs of {self.iterations} iterations."
+        )
 
         # Get data
         self.data_handler = DataHandler()
@@ -186,12 +189,14 @@ class MMSBM:
 
         if not silent:
             # Explain how we did
+            if self.debug:
+                self.logger.info(
+                    f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} "
+                    f"minutes."
+                )
             self.logger.info(
-                f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} minutes."
-            )
-            self.logger.info(
-                f"We had an accuracy of {stats['accuracy']}, a one off accuracy of {stats['one_off_accuracy']} "
-                f"and a MAE of {stats['mae']}."
+                f"The final accuracy is {stats['accuracy']}, the one off accuracy is {stats['one_off_accuracy']} "
+                f"and the MAE is {stats['mae']}."
             )
 
         return {
