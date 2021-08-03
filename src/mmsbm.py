@@ -15,7 +15,7 @@ from src.expectation_maximization import (
     compute_prod_dist,
 )
 from src.data_handler import DataHandler
-from utils import get_one_per_group
+from utils import get_n_per_group, structure_folds
 
 
 class MMSBM:
@@ -72,11 +72,12 @@ class MMSBM:
         self.d0 = d0
         self.d1 = d1
 
-    def fit(self, data):
+    def fit(self, data, silent=False):
 
-        self.logger.info(
-            f"Running {self.sampling} runs of {self.iterations} iterations."
-        )
+        if not silent:
+            self.logger.info(
+                f"Running {self.sampling} runs of {self.iterations} iterations."
+            )
 
         # Get data
         self.data_handler = DataHandler()
@@ -268,33 +269,30 @@ class MMSBM:
 
     def cv_fit(self, data, folds=5):
 
-        assert folds < 9, (
-            "Please make the n_folds smaller that 9 since we" "only have 9 tests."
-        )
-
         accuracies = []
-        temp = data
-        leftover_indices = data.index
 
+        items_per_fold = structure_folds(data, folds)
+
+        temp = data
         all_results = []
-        for n in range(folds):
-            self.logger.info(f"Running fold {n + 1} of {folds}...")
+        for f in range(folds):
+            self.logger.info(f"Running fold {f + 1} of {folds}...")
 
             # Get the correct indices
             test_indices = [
-                a[0]
+                a
                 for a in temp.groupby(temp.columns[0], as_index=False)
-                .apply(get_one_per_group)
+                .apply(get_n_per_group, n=items_per_fold)
                 .values
-                if a[0] != 0
             ]
+            test_indices = [a for b in test_indices for a in b if str(a) != "0"]
 
-            train_indices = [a for a in data.index if a not in test_indices]
-            leftover_indices = [a for a in leftover_indices if a not in test_indices]
-            temp = data.iloc[leftover_indices, :]
+            test = temp.loc[test_indices, :]
+            train = data[~data.index.isin(test.index)]
+            temp = temp[~temp.index.isin(test_indices)]
 
-            self.fit(data.iloc[train_indices, :])
-            self.prediction_matrix = self.predict(data.iloc[test_indices, :])
+            self.fit(train, silent=True)
+            self.prediction_matrix = self.predict(test)
             results = self.score(silent=True)
 
             # We put together the best run for each of the s samplings of each fold
