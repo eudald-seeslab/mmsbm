@@ -2,7 +2,7 @@ import os
 from unittest import TestCase
 import numpy as np
 
-from src.expectation_maximization import compute_likelihood, compute_prod_dist
+from mmsbm.expectation_maximization import compute_likelihood, compute_prod_dist
 
 
 class TestFuncs(TestCase):

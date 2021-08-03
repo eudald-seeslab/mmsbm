@@ -8,7 +8,7 @@ setup(
     version="0.0.1",
     description="Compute Mixed Membership Stochastic Block Models.",
     py_modules=["mmsbm"],
-    package_dir={"": "src"},
+    package_dir={"": "mmsbm"},
     url="https://github.com/eudald-seeslab/mmsbm",
     author="Eudald Correig",
     author_email="eudald.correig@urv.cat",
