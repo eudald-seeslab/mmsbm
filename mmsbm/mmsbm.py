@@ -19,6 +19,39 @@ from mmsbm.utils import get_n_per_group, structure_folds
 
 
 class MMSBM:
+    """
+    Mixed Membership Stochastic Block Model.
+
+    This model computes the parameters of a MMSBM via expectation-maximization (EM) algorithm.
+
+    Parameters
+    ----------
+    user_groups : int
+        The number of groups in which to classify the users.
+
+    item_groups: int
+        The number of groups in which to classify the items.
+
+    iterations: int, default=400
+        The number of iterations to run for each EM run.
+
+    sampling: int, default=1
+        The number of parallel computations to run. Each computation leads to slightly different results so a sampling
+        bigger than 0 adds to robustness of the model.
+
+    seed: int, default=1714
+        Seed for reproducibility.
+
+    debug: int, default=False
+        Make everything more verbose and set iterations to 10 and sampling to 1.
+
+    Attributes
+    ---------
+    results: dictionary
+        Contains the goodness of fit statistics and the computed objects. Please see the score function for more
+        details.
+
+    """
     data_handler = None
     results = None
     test = None
@@ -73,6 +106,15 @@ class MMSBM:
         self.d1 = d1
 
     def fit(self, data, silent=False):
+        """
+        Fit the MMSBM with the given data.
+        :param data: {dataframe} of shape (n_samples, 3)
+            The input data. The first column has to be the user identifier, the second column the item identifier and
+            the third the rating.
+        :param silent: boolean.
+            Do you want to shut off most of the notifications? (Mostly for internal use)
+        :return: None
+        """
 
         if not silent:
             self.logger.info(
@@ -148,7 +190,25 @@ class MMSBM:
 
         return None
 
+    def _check_is_fitted(self):
+        assert self.results is not None, "You need to fit the model before predicting."
+
+    def _check_has_predictions(self):
+        assert self.prediction_matrix is not None, "You need to predict before computing the goodness of fit " \
+                                                   "parameters."
+
     def predict(self, data):
+        """
+        Use the fitted model to predict group memberships of the users of new data.
+        :param data: {dataframe} of shape (n_samples, 3)
+            The data to predict on. The first column has to be the user identifier, the second column the item
+            identifier and the third the rating.
+        :return: {ndarray}, shape (n_samples, user_groups)
+            Prediction matrix. A k column, n_samples numpy array whereby each row gives the probability of each user
+            belonging to each group.
+        """
+
+        self._check_is_fitted()
 
         test = self.data_handler.format_test_data(data)
         self.test = test
@@ -183,8 +243,35 @@ class MMSBM:
         return accuracies.index(max(accuracies))
 
     def score(self, silent=False):
+        """
+        Compute the goodness of fit statistics as well as the best possible model if multiple have been fitted.
+        :param silent: {boolean}.
+            Do you want to shut off most of the notifications? (Mostly for internal use)
+        :return: {dict}
+            Dictionary with two sub-dictionaries, one for the goodness of fit statistics (stats) and another one with
+            the computed objects in the model:
+                stats: {dict}
+                    accuracy: float
+                        Ratio of observations we got right.
+                    one_off_accuracy: float
+                        Ratio of observations we got at most one point away from truth.
+                    mae: integer
+                        Mean absolute error.
+                    s2: integer
+                        Squared error.
+                    s2pond: integer
+                        Weighted distance between predicted and reality.
+                objects: {dict}
+                    theta: ndarray (n_items, n_item_groups)
+                        Item loadings on item groups.
+                    eta: ndarray (n_samples, n_user_groups)
+                        User loadings on user groups.
+                    pr: ndarray (n_ratings, n_user_groups, n_item_groups)
+                        User group loadings for item groups for each rating.
+        """
 
-        # Now average over rats to get a more robust prediction matrix and predict again
+        self._check_has_predictions()
+
         stats = self._compute_stats(self.prediction_matrix)
         stats["likelihood"] = self.likelihood
 
@@ -204,6 +291,71 @@ class MMSBM:
             "stats": stats,
             "objects": {"theta": self.theta, "eta": self.eta, "pr": self.pr},
         }
+
+    def cv_fit(self, data, folds=5):
+        """
+        Fit MMSBM with 'folds' fold cross-validation.
+        :param data: {dataframe} of shape (n_samples, 3)
+            The input data. The first column has to be the user identifier, the second column the item identifier and
+            the third the rating.
+        :param folds: {integer}
+            Number of folds. It must not exceed the number of different users or items.
+        :return: None
+        """
+
+        items_per_fold = structure_folds(data, folds)
+
+        temp = data
+        accuracies = []
+        all_results = []
+        for f in range(folds):
+            self.logger.info(f"Running fold {f + 1} of {folds}...")
+
+            # Get the correct indices
+            test_indices = [
+                a
+                for a in temp.groupby(temp.columns[0], as_index=False)
+                .apply(get_n_per_group, n=items_per_fold)
+                .values
+            ]
+            test_indices = [a for b in test_indices for a in b if str(a) != "0"]
+
+            test = temp.loc[test_indices, :]
+            train = data[~data.index.isin(test.index)]
+            temp = temp[~temp.index.isin(test_indices)]
+
+            self.fit(train, silent=True)
+            self.prediction_matrix = self.predict(test)
+            results = self.score(silent=True)
+
+            # We put together the best run for each of the s samplings of each fold
+            all_results.append(
+                {
+                    "stats": results["stats"],
+                    "objects": {
+                        "theta": self.theta,
+                        "eta": self.eta,
+                        "pr": self.pr,
+                        "rat": self.prediction_matrix,
+                    },
+                }
+            )
+            accuracies.append(results["stats"]["accuracy"])
+
+        # Now we pick the best objects
+        accuracies = [a["stats"]["accuracy"] for a in all_results]
+        best = accuracies.index(max(accuracies))
+        self.theta = all_results[best]["objects"]["theta"]
+        self.eta = all_results[best]["objects"]["eta"]
+        self.pr = all_results[best]["objects"]["pr"]
+        self.prediction_matrix = all_results[best]["objects"]["rat"]
+
+        self.logger.info(f"Ran {folds} folds with accuracies {accuracies}.")
+        self.logger.info(
+            f"They have mean {np.mean(accuracies)} and sd {np.std(accuracies)}."
+        )
+
+        return accuracies
 
     def _compute_stats(self, rat):
         # How did we do?
@@ -266,60 +418,3 @@ class MMSBM:
     @staticmethod
     def _weighting(x, ratings):
         return sum([a * b for (a, b) in zip(x, ratings)])
-
-    def cv_fit(self, data, folds=5):
-
-        accuracies = []
-
-        items_per_fold = structure_folds(data, folds)
-
-        temp = data
-        all_results = []
-        for f in range(folds):
-            self.logger.info(f"Running fold {f + 1} of {folds}...")
-
-            # Get the correct indices
-            test_indices = [
-                a
-                for a in temp.groupby(temp.columns[0], as_index=False)
-                .apply(get_n_per_group, n=items_per_fold)
-                .values
-            ]
-            test_indices = [a for b in test_indices for a in b if str(a) != "0"]
-
-            test = temp.loc[test_indices, :]
-            train = data[~data.index.isin(test.index)]
-            temp = temp[~temp.index.isin(test_indices)]
-
-            self.fit(train, silent=True)
-            self.prediction_matrix = self.predict(test)
-            results = self.score(silent=True)
-
-            # We put together the best run for each of the s samplings of each fold
-            all_results.append(
-                {
-                    "stats": results["stats"],
-                    "objects": {
-                        "theta": self.theta,
-                        "eta": self.eta,
-                        "pr": self.pr,
-                        "rat": self.prediction_matrix,
-                    },
-                }
-            )
-            accuracies.append(results["stats"]["accuracy"])
-
-        # Now we pick the best objects
-        accuracies = [a["stats"]["accuracy"] for a in all_results]
-        best = accuracies.index(max(accuracies))
-        self.theta = all_results[best]["objects"]["theta"]
-        self.eta = all_results[best]["objects"]["eta"]
-        self.pr = all_results[best]["objects"]["pr"]
-        self.prediction_matrix = all_results[best]["objects"]["rat"]
-
-        self.logger.info(f"Ran {folds} folds with accuracies {accuracies}.")
-        self.logger.info(
-            f"They have mean {np.mean(accuracies)} and sd {np.std(accuracies)}."
-        )
-
-        return accuracies
