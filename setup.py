@@ -29,9 +29,6 @@ setup(
         "scikit-learn ~= 0.24.2",
         "scipy ~= 1.6.3",
         "tqdm ~= 4.61.0",
-        "optuna ~= 2.8.0",
-        "seaborn ~= 0.11.1",
-        "ruamel.yaml ~= 0.17.10",
     ],
     extras_require={
         "dev": [
