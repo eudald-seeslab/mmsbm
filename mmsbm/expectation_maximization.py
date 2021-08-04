@@ -1,7 +1,6 @@
 # These are the functions that carry out the Expectation-Maximization procedure
 
 import numpy as np
-import pandas as pd
 
 
 def init_random_array(shape, rng):
@@ -12,7 +11,7 @@ def compute_omega(x, theta, eta, pr, ratings):
     return theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ratings[x[2]]])
 
 
-def update_coefs(data, ratings, theta, eta, pr):
+def update_coefficients(data, ratings, theta, eta, pr):
 
     omegas = np.array([compute_omega(a, theta, eta, pr, ratings) for a in data])
     sum_omega = omegas.sum(axis=-1).sum(axis=-1)
