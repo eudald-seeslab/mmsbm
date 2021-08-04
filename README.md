@@ -4,72 +4,95 @@ This repo follows [this](https://github.com/agodoylo/MMSBMrecommender)
 other work on Mixed Membership Stochastic Block Models to build a recommender 
 system [1].
 
+## Installation
+
+```
+pip install mmsbm
+```
+
 ## Usage
+
+### Input data
+
+You'll need a pandas dataframe with exactly 3 columns: users, items and ratings, e.g.:
+
+```python
+import pandas as pd
+from random import choice
+
+train = pd.DataFrame(
+    {
+    "users": [f"user{choice(list(range(5)))}" for _ in range(100)],
+    "items": [f"item{choice(list(range(10)))}" for _ in range(100)],
+    "ratings": [choice(list(range(1, 6))) for _ in range(100)]
+    }
+)
+
+test = pd.DataFrame(
+    {
+    "users": [f"user{choice(list(range(5)))}" for _ in range(50)],
+    "items": [f"item{choice(list(range(10)))}" for _ in range(50)],
+    "ratings": [choice(list(range(1, 6))) for _ in range(50)]
+    }
+)
+
+```
 
 ### Setup
 
-Install dependencies from requirements.txt:
+```python
 
-```
-pip install -r requirements.txt
-```
+from mmsbm import MMSBM
 
-### Run
-
-You have three ways of running this: 
-
-#### Normal run
-
-If you know the parameters you want to use, you can do:
-
-```
-python run.py --args
+# Initialize the MMSBM class:
+mmsbm = MMSBM(
+    user_groups=2,
+    item_groups=4,
+    iterations=500,
+    sampling=5,
+    seed=1,
+)
 ```
 
-with the following arguments:
-- `-t` or `--train`: train set name (already within the data directory)
-- `-e` or `--test`: test set name (already within the data directory)
-- `-k` or `--user_groups`: number of user groups to consider.
-- `-l` or `--item_groups`: number of item groups to consider.
-- `-i` or `--iterations`: number of iterations for each pass (default=200).
-- `-s` or `--sampling`: number of passes or runs (default=1).
-- `--seed`: if you want, you can give me a seed for pseudorandom initialization.
+### Fit models
 
-The script prints out the model goodness of fit parameters.
+In here you have two options, a simple fit where we run "sampling" times the fitting algorithm and return the results
+for all runs, you are then in charge of choosing the best one. 
 
-#### Jupyter notebook
-
-Otherwise, you can use the Runner.ipynb notebook. It calls the same script as
-run.py, but it returns the goodness of fit parameters, the model coefficients 
-(probability distributions (Pr)) and the predictions. You can then use those, 
-for example, to check convergence of the model parameters.
-
-#### Optimizer
-
-If you want to explore and try to find the optimal number if user and item 
-groups, you can do this with the optimizer. To use it, you first need to make a 
-copy of the`config.yml` file and call it `local_config.yml`. In here you can set 
-both the optimizing and training parameters, as well as the number of runs. Make 
-sure you name each study differently if you change the parameters, otherwise the 
-hyperparameter optimization will go crazy.
-
-After the optimization is complete, you will get the parameters of the best run
-and can pass them to run.py.
-
-*Note:* the optimization results will be stored in a self-generated database
-called parameters.db. If you stop it and start it again, it will continue where 
-it left off.
-
-**Optuna dashboard**
-
-The library for optimization is optuna. They have released a nice component whereby
-you can create a dashboard to visualize the progress. To use it, you can do:
-
-```
-optuna-dashboard sqlite:///parameters.db
+```python
+mmsbm.fit(train)
 ```
 
-### Performance
+The other option is the cv_fit, whereby we split the input data in "folds" number of folds
+and run the fitting in each one and test on the excluded fold. We then return all the 
+samplings of the best performing model.
+
+```python
+mmsbm.cv_fit(train, folds=5)
+```
+
+### Prediction
+
+Once the model is fitted, we can predict on test data. The function predict returns
+the prediction matrix (the probability of each user to belong to each group) as a numpy array.
+
+```python
+pred_matrix = mmsbm.predict(test)
+```
+
+### Score
+
+Finally, you can get statistics about the goodness of fit and other parameters of the model, 
+as well as the computed objects: the theta matrix, the eta matrix and the probability distributions.
+
+The function score returns a dictionary with two sub-dictionaries, one for statistics about the model (called "stats") and 
+the other one with the computed objects (called "objects").
+
+```python
+results = mmsbm.score()
+```
+
+## Performance
 
 Each iteration takes a little less than a second in my Intel i7. This means that a
 400 iteration runs takes around 6 minutes and a half. The computation 
@@ -82,23 +105,22 @@ regardless of training set size and sampling number.
 A complete study could be something like 100 hyperparameter optimization runs
 of 6 samples of 400 iterations, which will take about 10 hours. 
 
-### Tests
+## Tests
 
-There are a few tests, you can run them with:
+Tests are WIP.
 
-```
-python -m unittest discover
-```
-
-*Note*: I don't know if they work anymore. 
 
 ## TODO
 
 - Fix crazy error bars
 - Fix and add tests
 - Add visualizations
-- Add support for different datasets
+- Comment functions
 
+## Contributing
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+
+Please make sure to update tests as appropriate.
 
 # References
 [1]: Godoy-Lorite, Antonia, et al. "Accurate and scalable social recommendation 
