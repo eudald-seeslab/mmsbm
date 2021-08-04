@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -12,11 +12,16 @@ setup(
     url="https://github.com/eudald-seeslab/mmsbm",
     author="Eudald Correig",
     author_email="eudald.correig@urv.cat",
+    keywords=["bayesian analysis", "recommender systems", "network analysis", "python"],
     classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Data Scientists",
+        "Topic :: Data Analysis :: Bayesian Networks",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "License :: BSD 3-Clause",
         "Operating System:: OS Independent",
     ],
@@ -36,5 +41,5 @@ setup(
         "dev": [
             "pytest >= 3.7",
         ],
-    },
+    }
 )

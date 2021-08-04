@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from expectation_maximization import (
+from mmsbm.expectation_maximization import (
     normalize_with_d,
     init_random_array,
     normalize_with_self,
@@ -14,8 +14,8 @@ from expectation_maximization import (
     compute_likelihood,
     compute_prod_dist,
 )
-from data_handler import DataHandler
-from utils import get_n_per_group, structure_folds
+from mmsbm.data_handler import DataHandler
+from mmsbm.utils import get_n_per_group, structure_folds
 
 
 class MMSBM:

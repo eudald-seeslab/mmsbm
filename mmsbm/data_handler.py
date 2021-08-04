@@ -1,7 +1,7 @@
 import logging
 
 import pandas as pd
-from utils import _invert_dict
+from mmsbm.utils import _invert_dict
 
 pd.options.mode.chained_assignment = None
 
