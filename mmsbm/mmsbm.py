@@ -259,7 +259,7 @@ class MMSBM:
                         Mean absolute error.
                     s2: integer
                         Squared error.
-                    s2pond: integer
+                    s2pond: float
                         Weighted distance between predicted and reality.
                 objects: {dict}
                     theta: ndarray (n_items, n_item_groups)
