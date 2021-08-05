@@ -2,23 +2,24 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from mmsbm import MMSBM
+from src.mmsbm import MMSBM
 
 
 def mock_data(seed):
 
-    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
+
     return pd.DataFrame(
         {
-            "users": [f"user{np.random.choice(list(range(5)))}" for _ in range(100)],
-            "items": [f"item{np.random.choice(list(range(10)))}" for _ in range(100)],
-            "ratings": [np.random.choice(list(range(1, 6))) for _ in range(100)],
+            "users": [f"user{rng.choice(list(range(5)))}" for _ in range(100)],
+            "items": [f"item{rng.choice(list(range(10)))}" for _ in range(100)],
+            "ratings": [rng.choice(list(range(1, 6))) for _ in range(100)],
         }
     )
 
 
 def fit_model():
-    mm = MMSBM(2, 2)
+    mm = MMSBM(2, 2, seed=1)
     mm.fit(mock_data(1))
 
     return mm
@@ -40,53 +41,45 @@ def check_score():
 
 
 def test_prediction_matrix(fit_and_predict):
-    pred_matrix = fit_and_predict
-    assert pred_matrix.sum() == pytest.approx(100, 0.01)
+    assert fit_and_predict.sum() == pytest.approx(100, 0.01)
 
 
 class TestStats:
-    def __init__(self, check_score):
-        self.results = check_score
+    def test_accuracy(self, check_score):
+        assert check_score["stats"]["accuracy"] == pytest.approx(0.24, 0.01)
 
-    def test_accuracy(self):
-        assert self.results["stats"]["accuracy"] == pytest.approx(0.18, 0.01)
+    def test_one_off_accuracy(self, check_score):
+        assert check_score["stats"]["one_off_accuracy"] == pytest.approx(0.47, 0.01)
 
-    def test_one_off_accuracy(self):
-        assert self.results["stats"]["test_one_off_accuracy"] == pytest.approx(
-            0.46, 0.01
-        )
+    def test_mae(self, check_score):
+        assert check_score["stats"]["mae"] == pytest.approx(0.78, 0.01)
 
-    def test_mae(self):
-        assert self.results["stats"]["mae"] == pytest.approx(0.87, 0.01)
+    def test_s2(self, check_score):
+        assert check_score["stats"]["s2"] == pytest.approx(179, 1)
 
-    def test_s2(self):
-        assert self.results["stats"]["s2"] == pytest.approx(179, 1)
+    def test_s2pond(self, check_score):
+        assert check_score["stats"]["s2"] == pytest.approx(163, 0.01)
 
-    def test_s2pond(self):
-        assert self.results["stats"]["s2"] == pytest.approx(150.22, 0.01)
-
-    def test_likelihood(self):
-        assert self.results["stats"]["likelihood"].sum() == pytest.approx(-136.24, 0.01)
+    def test_likelihood(self, check_score):
+        assert check_score["stats"]["likelihood"].sum() == pytest.approx(-137, 1)
 
 
 class TestObjects:
-    def __init__(self, check_score):
-        self.results = check_score
-
-    def test_theta(self):
-        assert self.results["objects"]["theta"].sum(axis=0) == pytest.approx(
-            [1.95, 3.05], 0.01
+    def test_theta(self, check_score):
+        assert check_score["objects"]["theta"].sum(axis=0)[0] == pytest.approx(
+            1.35, 0.01
         )
 
-    def test_eta(self):
-        assert self.results["objects"]["eta"].sum(axis=0) == pytest.approx(
-            [5.52, 4.48], 0.01
-        )
+    def test_eta(self, check_score):
+        assert check_score["objects"]["eta"].sum(axis=0)[0] == pytest.approx(3.74, 0.01)
 
-    def test_pr_keys(self):
-        assert list(self.results["objects"]["pr"].keys()) == ["3", "4", "1", "5", "2"]
+    def test_pr_keys(self, check_score):
+        assert set(list(check_score["objects"]["pr"].keys())) == {"1", "2", "3", "4", "5"}
 
-    def test_pr_values(self):
+    def test_pr_values(self, check_score):
+        correct_values = [0.67, 0.65, 0.88, 1.05, 0.75]
+
         assert [
-            a.sum().sum() for a in self.results["objects"]["pr"].values()
-        ] == pytest.approx([0.67, 0.65, 0.88, 1.05, 0.75], 0.01)
+            a.sum().sum() == pytest.approx(b, 0.01)
+            for (a, b) in zip(check_score["objects"]["pr"].values(), correct_values)
+        ]

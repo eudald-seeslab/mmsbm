@@ -3,10 +3,6 @@
 import numpy as np
 
 
-def init_random_array(shape, rng):
-    return rng.random(shape)
-
-
 def compute_omega(x, theta, eta, pr, ratings):
     return theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ratings[x[2]]])
 

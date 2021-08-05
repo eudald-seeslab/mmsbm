@@ -29,7 +29,7 @@ class DataHandler:
 
     @staticmethod
     def _create_values_dict(x):
-        values = set(x)
+        values = sorted(set(x))
         dict_ = {}
         [dict_.update({str(b): a}) for (a, b) in zip(range(len(values)), values)]
 

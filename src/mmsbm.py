@@ -9,7 +9,6 @@ from tqdm import tqdm
 from data_handler import DataHandler
 from expectation_maximization import (
     normalize_with_d,
-    init_random_array,
     update_coefficients,
     normalize_with_self,
     compute_likelihood,
@@ -68,7 +67,7 @@ class MMSBM:
         item_groups,
         iterations=400,
         sampling=1,
-        seed=1714,
+        seed=None,
         debug=False,
     ):
         self.start_time = datetime.now()
@@ -78,10 +77,11 @@ class MMSBM:
         self.sampling = sampling
         self.debug = debug
 
-        # Initiate the random state
+        # Initiate the general random state
         rng = np.random.default_rng(seed)
-        # Create seeds for each process
-        self.seeds = list(rng.integers(low=1, high=10000, size=sampling))
+        # Initiate the child random states
+        ss = rng.bit_generator._seed_seq
+        self.child_states = ss.spawn(sampling)
 
         self.logger = logging.getLogger("MMSBM")
         logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
@@ -99,6 +99,7 @@ class MMSBM:
         self.m = int(train[:, 1].max())
 
         # If, for some reason, there are missing links, we need to fill them:
+        # TODO: I think this can be safely removed
         [d0.update({a: []}) for a in set(range(self.p)).difference(set(d0.keys()))]
         [d1.update({a: []}) for a in set(range(self.m)).difference(set(d1.keys()))]
 
@@ -133,7 +134,7 @@ class MMSBM:
         for i in range(self.sampling):
             proc = multiprocessing.Process(
                 target=self.run_one_sampling,
-                args=(train, self.seeds[i], i, return_dict),
+                args=(train, self.child_states[i], i, return_dict),
             )
             jobs.append(proc)
             proc.start()
@@ -147,15 +148,12 @@ class MMSBM:
         rng = np.random.default_rng(seed)
 
         # Generate random (but normalized) inits
-        theta = normalize_with_d(
-            init_random_array((self.p + 1, self.user_groups), rng), self.d0
-        )
-        eta = normalize_with_d(
-            init_random_array((self.m + 1, self.item_groups), rng), self.d1
-        )
-        pr = normalize_with_self(
-            init_random_array((self.user_groups, self.item_groups, self.r + 1), rng)
-        )
+        temp = rng.random((self.p + 1, self.user_groups))
+        print(self.d0)
+        theta = normalize_with_d(temp, self.d0)
+
+        eta = normalize_with_d(rng.random((self.m + 1, self.item_groups)), self.d1)
+        pr = normalize_with_self(rng.random((self.user_groups, self.item_groups, self.r + 1)))
 
         # Do the work
         # We store the prs to check convergence
