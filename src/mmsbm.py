@@ -149,7 +149,6 @@ class MMSBM:
 
         # Generate random (but normalized) inits
         temp = rng.random((self.p + 1, self.user_groups))
-        print(self.d0)
         theta = normalize_with_d(temp, self.d0)
 
         eta = normalize_with_d(rng.random((self.m + 1, self.item_groups)), self.d1)
