@@ -1,7 +1,7 @@
 import logging
 
 import pandas as pd
-from mmsbm.utils import _invert_dict
+from utils import _invert_dict
 
 pd.options.mode.chained_assignment = None
 
@@ -49,13 +49,9 @@ class DataHandler:
         return df.values
 
     def parse_test_data(self, df):
-        try:
-            df.iloc[:, 0] = [self.obs_dict[str(a)] for a in df.iloc[:, 0]]
-            df.iloc[:, 1] = [self.items_dict[str(a)] for a in df.iloc[:, 1]]
-            df.iloc[:, 2] = [self.ratings_dict[str(a)] for a in df.iloc[:, 2]]
-        except KeyError as e:
-            # FIXME!!!
-            pass
+        df.iloc[:, 0] = [self.obs_dict[str(a)] for a in df.iloc[:, 0]]
+        df.iloc[:, 1] = [self.items_dict[str(a)] for a in df.iloc[:, 1]]
+        df.iloc[:, 2] = [self.ratings_dict[str(a)] for a in df.iloc[:, 2]]
 
         return df.values
 
