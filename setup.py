@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="mmsbm",
-    version="0.0.2",
+    version="0.0.2a",
     description="Compute Mixed Membership Stochastic Block Models.",
     py_modules=["mmsbm"],
     package_dir={"": "src"},
