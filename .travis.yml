@@ -9,4 +9,4 @@ install:
   - pip install mmsbm
 
 script:
-  - pytest
+  - python -m pytest tests/*

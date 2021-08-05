@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setup(
     name="mmsbm",
-    version="0.0.4",
+    version="0.0.2",
     description="Compute Mixed Membership Stochastic Block Models.",
     py_modules=["mmsbm"],
-    package_dir={"": "mmsbm"},
+    package_dir={"": "src"},
     url="https://github.com/eudald-seeslab/mmsbm",
     author="Eudald Correig",
     author_email="eudald.correig@urv.cat",
