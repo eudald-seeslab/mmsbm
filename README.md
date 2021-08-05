@@ -94,8 +94,8 @@ results = mmsbm.score()
 
 ## Performance
 
-Each iteration takes a little less than a second in my Intel i7. This means that a
-400 iteration runs takes around 6 minutes and a half. The computation 
+Each iteration takes a little about half a second in an Intel i7. This means that a
+400 iteration runs takes around 3 minutes and a half. The computation 
 is vectorized, so, as long as you don't go crazy with the number of observations, 
  the time should be approximately the same regardless of training set size. 
 It is also parallelized over sampling, so, as long as you choose less sampling
@@ -107,12 +107,17 @@ of 6 samples of 400 iterations, which will take about 10 hours.
 
 ## Tests
 
-Tests are WIP.
+To run tests do the usual:
+
+```
+python -m pytest tests/*
+```
 
 
 ## TODO
 
 - Progress bars are not working for jupyter notebooks.
+- Include user_groups and item_groups optimization procedure.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.

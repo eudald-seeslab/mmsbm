@@ -5,10 +5,6 @@
 # Local config file
 local_config.yml
 
-# R Stuff
-.Rproj.user
-/mmsbm.Rproj
-
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
