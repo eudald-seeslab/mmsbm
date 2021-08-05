@@ -1,10 +1,11 @@
 import logging
 import multiprocessing
 from datetime import datetime
+from itertools import repeat
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from data_handler import DataHandler
 from expectation_maximization import (
@@ -128,23 +129,10 @@ class MMSBM:
         train = self.data_handler.format_train_data(data)
         self._prepare_objects(train)
 
-        manager = multiprocessing.Manager()
-        return_dict = manager.dict()
-        jobs = []
-        for i in range(self.sampling):
-            proc = multiprocessing.Process(
-                target=self.run_one_sampling,
-                args=(train, self.child_states[i], i, return_dict),
-            )
-            jobs.append(proc)
-            proc.start()
+        with multiprocessing.Pool(processes=self.sampling) as pool:
+            self.results = pool.starmap(self.run_one_sampling, zip(repeat(train), self.child_states, list(range(self.sampling))))
 
-        for proc in jobs:
-            proc.join()
-
-        self.results = return_dict
-
-    def run_one_sampling(self, data, seed, i, return_dict):
+    def run_one_sampling(self, data, seed, i):
         rng = np.random.default_rng(seed)
 
         # Generate random (but normalized) inits
@@ -155,9 +143,8 @@ class MMSBM:
         pr = normalize_with_self(rng.random((self.user_groups, self.item_groups, self.r + 1)))
 
         # Do the work
-        # We store the prs to check convergence
-        for j in tqdm(range(self.iterations)):
-            # This is the crux of the script; please see funcs.py
+        for j in tqdm(range(self.iterations), position=0):
+            # This is the crux of the script; please see expectation_maximization.py
             n_theta, n_eta, npr = update_coefficients(
                 data=data, ratings=self.ratings, theta=theta, eta=eta, pr=pr
             )
@@ -179,14 +166,12 @@ class MMSBM:
 
         likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
 
-        return_dict[i] = {
+        return {
             "likelihood": likelihood,
             "pr": pr,
             "theta": theta,
             "eta": eta,
         }
-
-        return None
 
     def _check_is_fitted(self):
         assert self.results is not None, "You need to fit the model before predicting."
@@ -215,12 +200,12 @@ class MMSBM:
         # Get the info for all the runs
         rats = [
             compute_prod_dist(test, a["theta"], a["eta"], a["pr"])
-            for a in self.results.values()
+            for a in self.results
         ]
-        prs = np.array([a["pr"] for a in self.results.values()])
-        likelihoods = np.array([a["likelihood"] for a in self.results.values()])
-        thetas = np.array([a["theta"] for a in self.results.values()])
-        etas = np.array([a["eta"] for a in self.results.values()])
+        prs = np.array([a["pr"] for a in self.results])
+        likelihoods = np.array([a["likelihood"] for a in self.results])
+        thetas = np.array([a["theta"] for a in self.results])
+        etas = np.array([a["eta"] for a in self.results])
 
         best = self.choose_best_run(rats)
 

@@ -113,7 +113,6 @@ Tests are WIP.
 ## TODO
 
 - Progress bars are not working for jupyter notebooks.
-- Progress bars get crazy with sampling > 1
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
