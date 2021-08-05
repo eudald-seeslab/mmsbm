@@ -6,6 +6,17 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from data_handler import DataHandler
+from expectation_maximization import (
+    normalize_with_d,
+    init_random_array,
+    update_coefficients,
+    normalize_with_self,
+    compute_likelihood,
+    compute_prod_dist,
+)
+from helpers import structure_folds, get_n_per_group
+
 
 class MMSBM:
     """
@@ -41,6 +52,7 @@ class MMSBM:
         details.
 
     """
+
     data_handler = None
     results = None
     test = None
@@ -183,8 +195,9 @@ class MMSBM:
         assert self.results is not None, "You need to fit the model before predicting."
 
     def _check_has_predictions(self):
-        assert self.prediction_matrix is not None, "You need to predict before computing the goodness of fit " \
-                                                   "parameters."
+        assert self.prediction_matrix is not None, (
+            "You need to predict before computing the goodness of fit " "parameters."
+        )
 
     def predict(self, data):
         """
