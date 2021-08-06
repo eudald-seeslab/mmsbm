@@ -19,7 +19,11 @@ setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Intended Audience :: Science/Research",
+        "Operating System :: OS Independent",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
+    license="BSD-3-Clause License",
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
