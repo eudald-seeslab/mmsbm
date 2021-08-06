@@ -1,5 +1,7 @@
 # Mixed Membership Stochastic Block Models
 
+[![Build Status](https://travis-ci.com/eudald-seeslab/mmsbm.svg?token=FgqRjRbiBxssKd9AcHMK&branch=main)](https://travis-ci.com/eudald-seeslab/mmsbm)
+
 This repo follows [this](https://github.com/agodoylo/MMSBMrecommender) 
  work on Mixed Membership Stochastic Block Models to build a recommender 
 system [1].
