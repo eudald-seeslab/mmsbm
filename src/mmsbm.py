@@ -136,9 +136,7 @@ class MMSBM:
         rng = np.random.default_rng(seed)
 
         # Generate random (but normalized) inits
-        temp = rng.random((self.p + 1, self.user_groups))
-        theta = normalize_with_d(temp, self.d0)
-
+        theta = normalize_with_d(rng.random((self.p + 1, self.user_groups)), self.d0)
         eta = normalize_with_d(rng.random((self.m + 1, self.item_groups)), self.d1)
         pr = normalize_with_self(rng.random((self.user_groups, self.item_groups, self.r + 1)))
 
