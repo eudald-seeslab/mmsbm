@@ -5,7 +5,7 @@ def _invert_dict(d):
     return {v: k for k, v in d.items()}
 
 
-def get_n_per_group(x, n, rng=None):
+def get_n_per_group(x, n, rng):
     for i in reversed(range(n)):
         try:
             return rng.choice(x.index, i + 1, replace=False)
