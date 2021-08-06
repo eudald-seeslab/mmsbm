@@ -3,7 +3,7 @@ python:
   - "3.8"
 
 install:
-  - pip install mmsbm
+  - pip install .
 
 script:
   - python -m pytest tests/*

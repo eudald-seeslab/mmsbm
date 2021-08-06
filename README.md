@@ -104,12 +104,9 @@ It is also parallelized over sampling, so, as long as you choose less sampling
 than number of cores, you should have approximately the same performance 
 regardless of training set size and sampling number.
 
-A complete study could be something like 100 hyperparameter optimization runs
-of 6 samples of 400 iterations, which will take about 10 hours. 
-
 ## Tests
 
-To run tests do the usual:
+To run tests do the following:
 
 ```
 python -m pytest tests/*
@@ -120,6 +117,7 @@ python -m pytest tests/*
 
 - Progress bars are not working for jupyter notebooks.
 - Include user_groups and item_groups optimization procedure.
+- The cv_fit test is not working on travis.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
