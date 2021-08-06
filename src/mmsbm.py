@@ -61,6 +61,7 @@ class MMSBM:
     pr = None
     likelihood = None
     prediction_matrix = None
+    rng = None
 
     def __init__(
         self,
@@ -79,9 +80,9 @@ class MMSBM:
         self.debug = debug
 
         # Initiate the general random state
-        rng = np.random.default_rng(seed)
+        self.rng = np.random.default_rng(seed)
         # Initiate the child random states
-        ss = rng.bit_generator._seed_seq
+        ss = self.rng.bit_generator._seed_seq
         self.child_states = ss.spawn(sampling)
 
         self.logger = logging.getLogger("MMSBM")
@@ -297,7 +298,7 @@ class MMSBM:
             test_indices = [
                 a
                 for a in temp.groupby(temp.columns[0], as_index=False)
-                .apply(get_n_per_group, n=items_per_fold)
+                .apply(get_n_per_group, n=items_per_fold, rng=self.rng)
                 .values
             ]
             test_indices = [a for b in test_indices for a in b if str(a) != "0"]

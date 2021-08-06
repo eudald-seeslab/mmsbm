@@ -5,10 +5,10 @@ def _invert_dict(d):
     return {v: k for k, v in d.items()}
 
 
-def get_n_per_group(x, n):
+def get_n_per_group(x, n, rng=None):
     for i in reversed(range(n)):
         try:
-            return np.random.choice(x.index, i + 1, replace=False)
+            return rng.choice(x.index, i + 1, replace=False)
         except ValueError:
             pass
 

@@ -25,6 +25,12 @@ def fit_model():
     return mm
 
 
+def cv_fit_model():
+    mm = MMSBM(2, 2, seed=1)
+
+    return mm.cv_fit(mock_data(1), folds=2)
+
+
 @pytest.fixture
 def fit_and_predict():
     mm = fit_model()
@@ -42,6 +48,13 @@ def check_score():
 
 def test_prediction_matrix(fit_and_predict):
     assert fit_and_predict.sum() == pytest.approx(100, 0.01)
+
+
+def test_cv_fit():
+    accuracies = cv_fit_model()
+
+    assert accuracies[0] == pytest.approx(0.08, 1)
+    assert accuracies[1] == pytest.approx(0.12, 1)
 
 
 class TestStats:
