@@ -2,9 +2,9 @@
 
 [![Build Status](https://travis-ci.com/eudald-seeslab/mmsbm.svg?token=FgqRjRbiBxssKd9AcHMK&branch=main)](https://travis-ci.com/eudald-seeslab/mmsbm)
 
-This repo follows [this](https://github.com/agodoylo/MMSBMrecommender) 
+This library converts [this](https://github.com/agodoylo/MMSBMrecommender) 
  work on Mixed Membership Stochastic Block Models to build a recommender 
-system [1].
+system [1] into a library to be used with more generic data.
 
 ## Installation
 
@@ -65,12 +65,13 @@ for all runs, you are then in charge of choosing the best one.
 mmsbm.fit(train)
 ```
 
-The other option is the cv_fit, whereby we split the input data in "folds" number of folds
+The other option is the cv_fit (cross-validated fit) function, whereby we split the input data in "folds" number of folds
 and run the fitting in each one and test on the excluded fold. We then return all the 
-samplings of the best performing model.
+samplings of the best performing model. The function returns a list of the accuracies for 
+each fold so that you can get confidence intervals on them.
 
 ```python
-mmsbm.cv_fit(train, folds=5)
+accuracies = mmsbm.cv_fit(train, folds=5)
 ```
 
 ### Prediction
