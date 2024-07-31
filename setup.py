@@ -19,6 +19,8 @@ setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Intended Audience :: Science/Research",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -27,11 +29,11 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        "numpy ~= 1.20.3",
-        "pandas ~= 1.2.4",
-        "scikit-learn ~= 0.24.2",
-        "scipy ~= 1.6.3",
-        "tqdm ~= 4.61.0",
+        "numpy ~= 1.26.4",
+        "pandas ~= 2.2.2",
+        "scikit-learn ~= 1.5.1",
+        "scipy ~= 1.14.0",
+        "tqdm ~= 4.66.0",
     ],
     extras_require={
         "dev": [
