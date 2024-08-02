@@ -32,6 +32,7 @@ def update_coefficients(data, ratings, theta, eta, pr):
     # Shape: (input_length, num_user_groups, num_item_groups)
     increments = omegas / sum_omega[:, np.newaxis, np.newaxis]
 
+    # You may want to vectorize this, but, for some reason, it ends up being slower
     n_theta = np.array(
         [
             increments[np.where(data[:, 0] == a)].sum(-1).sum(0)
