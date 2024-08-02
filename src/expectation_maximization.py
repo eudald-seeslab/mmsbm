@@ -69,7 +69,7 @@ def normalize_with_self(df):
     ).reshape(df.shape)
 
 
-def compute_likelihood(data, ratings, theta, eta, pr):
+def compute_likelihood(data, theta, eta, pr):
     omegas = compute_omegas(data, theta, eta, pr)
     return sum([a * np.log(b) / b for (a, b) in zip(omegas, omegas.sum(-1).sum(-1))])
 

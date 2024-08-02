@@ -157,13 +157,13 @@ class MMSBM:
                 # For debugging purposes; compute likelihood every once in a while
                 if j % 50 == 0:
                     likelihood = compute_likelihood(
-                        self.train, self.ratings, theta, eta, pr
+                        self.train, theta, eta, pr
                     )
                     self.logger.debug(
                         f"\nLikelihood at run {i} is {likelihood.sum():.0f}"
                     )
 
-        likelihood = compute_likelihood(self.train, self.ratings, theta, eta, pr)
+        likelihood = compute_likelihood(self.train, theta, eta, pr)
 
         return {
             "likelihood": likelihood,
