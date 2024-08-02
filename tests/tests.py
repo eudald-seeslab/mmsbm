@@ -5,15 +5,20 @@ import numpy as np
 from src.mmsbm import MMSBM
 
 
+RATING_NUM = 1000
+
+
 def mock_data(seed):
+
+    n = RATING_NUM
 
     rng = np.random.default_rng(seed)
 
     return pd.DataFrame(
         {
-            "users": [f"user{rng.choice(list(range(5)))}" for _ in range(100)],
-            "items": [f"item{rng.choice(list(range(10)))}" for _ in range(100)],
-            "ratings": [rng.choice(list(range(1, 6))) for _ in range(100)],
+            "users": [f"user{rng.choice(list(range(5)))}" for _ in range(n)],
+            "items": [f"item{rng.choice(list(range(10)))}" for _ in range(n)],
+            "ratings": [rng.choice(list(range(1, 6))) for _ in range(n)],
         }
     )
 
@@ -47,7 +52,7 @@ def check_score():
 
 
 def test_prediction_matrix(fit_and_predict):
-    assert fit_and_predict.sum() == pytest.approx(100, 0.01)
+    assert fit_and_predict.sum() == pytest.approx(RATING_NUM, 0.01)
 
 
 # This works locally but fails in travis (FIXME)
