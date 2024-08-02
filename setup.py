@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="mmsbm",
-    version="0.1.4",
+    version="0.2.0",
     description="Compute Mixed Membership Stochastic Block Models.",
     py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers"],
     package_dir={"": "src"},
@@ -29,7 +29,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        "numpy ~= 1.26.4",
+        "numpy ~= 2.0.1",
         "pandas ~= 2.2.2",
         "scikit-learn ~= 1.5.1",
         "scipy ~= 1.14.0",
