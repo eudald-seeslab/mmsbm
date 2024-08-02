@@ -98,12 +98,12 @@ results = mmsbm.score()
 ## Performance
 
 Each iteration takes a little about half a second in an Intel i7. This means that a
-500 iteration runs takes around 4 minutes. The computation 
-is vectorized, so, as long as you don't go crazy with the number of observations, 
- the time should be approximately the same regardless of training set size. 
-It is also parallelized over sampling, so, as long as you choose less sampling
-than number of cores, you should have approximately the same performance 
-regardless of training set size and sampling number.
+500 iteration runs takes around 4 minutes. The computation is vectorized, so, as 
+long as you don't go crazy with the number of observations, the time should be 
+approximately the same regardless of training set size. It is also parallelized 
+over sampling, so, as long as you choose less sampling than number of cores, 
+you should have approximately the same performance  regardless of training set 
+size and sampling number.
 
 ## Tests
 

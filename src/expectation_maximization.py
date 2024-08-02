@@ -3,15 +3,34 @@
 import numpy as np
 
 
-def compute_omega(x, theta, eta, pr, ratings):
-    return theta[x[0]][:, np.newaxis] * (eta[x[1], :] * pr[:, :, ratings[x[2]]])
+def compute_omegas(data, theta, eta, pr):
+    user_indices = data[:, 0]
+    item_indices = data[:, 1]
+    rating_indices = data[:, 2]
+
+    # Shape: (input_length, num_user_groups, 1)
+    theta_expanded = theta[user_indices][:, :, np.newaxis]
+    # Shape: (input_length, 1, num_item_groups)
+    eta_expanded = eta[item_indices][:, np.newaxis, :]
+    # Shape: (num_user_groups, num_item_groups, input_length)
+    pr_selected = pr[:, :, rating_indices]
+
+    # Adjust pr_selected to match dimensions for broadcasting
+    # Shape: (input_length, num_user_groups, num_item_groups)
+    pr_expanded = np.moveaxis(pr_selected, -1, 0)
+
+    # Returned shape: (input_length, num_user_groups, num_item_groups)
+    return theta_expanded * (eta_expanded * pr_expanded)
 
 
 def update_coefficients(data, ratings, theta, eta, pr):
 
-    omegas = np.array([compute_omega(a, theta, eta, pr, ratings) for a in data])
+    # Shape: (input_length, num_user_groups, num_item_groups)
+    omegas = compute_omegas(data, theta, eta, pr)
+    # Shape: (input_length)
     sum_omega = omegas.sum(axis=-1).sum(axis=-1)
-    increments = np.array([a / b for (a, b) in zip(omegas, sum_omega)])
+    # Shape: (input_length, num_user_groups, num_item_groups)
+    increments = omegas / sum_omega[:, np.newaxis, np.newaxis]
 
     n_theta = np.array(
         [
@@ -51,7 +70,7 @@ def normalize_with_self(df):
 
 
 def compute_likelihood(data, ratings, theta, eta, pr):
-    omegas = np.array([compute_omega(a, theta, eta, pr, ratings) for a in data])
+    omegas = compute_omegas(data, theta, eta, pr)
     return sum([a * np.log(b) / b for (a, b) in zip(omegas, omegas.sum(-1).sum(-1))])
 
 
