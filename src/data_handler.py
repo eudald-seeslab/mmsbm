@@ -31,7 +31,7 @@ class DataHandler:
     def _create_values_dict(x):
         values = sorted(set(x))
         dict_ = {}
-        [dict_.update({str(b): a}) for (a, b) in zip(range(len(values)), values)]
+        [dict_.update({str(b): int(a)}) for (a, b) in zip(range(len(values)), values)]
 
         return dict_
 
@@ -45,6 +45,9 @@ class DataHandler:
         df.iloc[:, 0] = self._rename_values(df.iloc[:, 0], self.obs_dict)
         df.iloc[:, 1] = self._rename_values(df.iloc[:, 1], self.items_dict)
         df.iloc[:, 2] = self._rename_values(df.iloc[:, 2], self.ratings_dict)
+
+        # Convert whole dataframe to int
+        df = df.astype(int)
 
         # Note that we are returning numpy arrays
         return df.values
