@@ -87,7 +87,8 @@ class MMSBM:
         ss = self.rng.bit_generator._seed_seq
         self.child_states = ss.spawn(sampling)
 
-        self.logger = setup_logger("MMSBM")
+        log_level = logging.DEBUG if debug else logging.INFO
+        self.logger = setup_logger("MMSBM", level=log_level)
 
     def _prepare_objects(self, train):
 
@@ -101,21 +102,16 @@ class MMSBM:
 
         self.train = train
 
-    def fit(self, data, silent=False):
+    def fit(self, data):
         """
         Fit the MMSBM with the given data.
         :param data: {dataframe} of shape (n_samples, 3)
             The input data. The first column has to be the user identifier, the second column the item identifier and
             the third the rating.
-        :param silent: boolean.
-            Do you want to shut off most of the notifications? (Mostly for internal use)
         :return: None
         """
 
-        if not silent:
-            self.logger.info(
-                f"Running {self.sampling} runs of {self.iterations} iterations."
-            )
+        self.logger.info(f"Running {self.sampling} runs of {self.iterations} iterations.")
 
         # Get data
         self.data_handler = DataHandler()
@@ -145,15 +141,10 @@ class MMSBM:
             eta = normalize_with_d(n_eta, self.d1)
             pr = normalize_with_self(npr)
 
-            if self.debug:
+            if self.debug and j % 50 == 0:
                 # For debugging purposes; compute likelihood every once in a while
-                if j % 50 == 0:
-                    likelihood = compute_likelihood(
-                        self.train, theta, eta, pr
-                    )
-                    self.logger.debug(
-                        f"\nLikelihood at run {i} is {likelihood.sum():.0f}"
-                    )
+                likelihood = compute_likelihood(self.train, theta, eta, pr)
+                self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
 
         likelihood = compute_likelihood(self.train, theta, eta, pr)
 
@@ -217,7 +208,7 @@ class MMSBM:
         accuracies = [self._compute_stats(a)["accuracy"] for a in rats]
         return accuracies.index(max(accuracies))
 
-    def score(self, silent=False):
+    def score(self):
         """
         Compute the goodness of fit statistics as well as the best possible model if multiple have been fitted.
         :param silent: {boolean}.
@@ -250,17 +241,14 @@ class MMSBM:
         stats = self._compute_stats(self.prediction_matrix)
         stats["likelihood"] = self.likelihood
 
-        if not silent:
-            # Explain how we did
-            if self.debug:
-                self.logger.info(
-                    f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} "
-                    f"minutes."
-                )
-            self.logger.info(
-                f"The final accuracy is {stats['accuracy']}, the one off accuracy is {stats['one_off_accuracy']} "
-                f"and the MAE is {stats['mae']}."
-            )
+        self.logger.debug(
+            f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} "
+            f"minutes."
+        )
+        self.logger.info(
+            f"The final accuracy is {stats['accuracy']}, the one off accuracy is {stats['one_off_accuracy']} "
+            f"and the MAE is {stats['mae']}."
+        )
 
         return {
             "stats": stats,
