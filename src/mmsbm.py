@@ -145,15 +145,10 @@ class MMSBM:
             eta = normalize_with_d(n_eta, self.d1)
             pr = normalize_with_self(npr)
 
-            if self.debug:
+            if self.debug and j % 50 == 0:
                 # For debugging purposes; compute likelihood every once in a while
-                if j % 50 == 0:
-                    likelihood = compute_likelihood(
-                        self.train, theta, eta, pr
-                    )
-                    self.logger.debug(
-                        f"\nLikelihood at run {i} is {likelihood.sum():.0f}"
-                    )
+                likelihood = compute_likelihood(self.train, theta, eta, pr)
+                self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
 
         likelihood = compute_likelihood(self.train, theta, eta, pr)
 
@@ -251,12 +246,10 @@ class MMSBM:
         stats["likelihood"] = self.likelihood
 
         if not silent:
-            # Explain how we did
-            if self.debug:
-                self.logger.info(
-                    f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} "
-                    f"minutes."
-                )
+            self.logger.debug(
+                f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} "
+                f"minutes."
+            )
             self.logger.info(
                 f"The final accuracy is {stats['accuracy']}, the one off accuracy is {stats['one_off_accuracy']} "
                 f"and the MAE is {stats['mae']}."
