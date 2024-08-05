@@ -90,24 +90,15 @@ class MMSBM:
 
     def _prepare_objects(self, train):
 
-        # Create a few dicts with the relationships
-        d0 = {}
-        d1 = {}
-        [d0.update({a: list(train[train[:, 0] == a, 1])}) for a in set(train[:, 0])]
-        [d1.update({a: list(train[train[:, 1] == a, 0])}) for a in set(train[:, 1])]
         self.ratings = sorted(set(train[:, 2]))
         self.r = max(self.ratings)
         self.p = int(train[:, 0].max())
         self.m = int(train[:, 1].max())
 
-        # If, for some reason, there are missing links, we need to fill them:
-        # TODO: I think this can be safely removed
-        [d0.update({a: []}) for a in set(range(self.p)).difference(set(d0.keys()))]
-        [d1.update({a: []}) for a in set(range(self.m)).difference(set(d1.keys()))]
+        self.d0 = {a: list(train[train[:, 0] == a, 1]) for a in set(train[:, 0])}
+        self.d1 = {a: list(train[train[:, 1] == a, 0]) for a in set(train[:, 1])}
 
         self.train = train
-        self.d0 = d0
-        self.d1 = d1
 
     def fit(self, data, silent=False):
         """
