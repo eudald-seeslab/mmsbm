@@ -17,6 +17,8 @@ from expectation_maximization import (
 )
 from helpers import structure_folds, get_n_per_group
 
+from src.logger import setup_logger
+
 
 class MMSBM:
     """
@@ -85,8 +87,7 @@ class MMSBM:
         ss = self.rng.bit_generator._seed_seq
         self.child_states = ss.spawn(sampling)
 
-        self.logger = logging.getLogger("MMSBM")
-        logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+        self.logger = setup_logger("MMSBM")
 
     def _prepare_objects(self, train):
 
