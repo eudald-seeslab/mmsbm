@@ -362,10 +362,7 @@ class MMSBM:
 
         # Same but weighed
         # Note that we are assuming that weights are the first R columns
-        rat["pred_pond"] = [
-            self._weighting(a, self.ratings)
-            for a in rat.iloc[:, : len(self.ratings)].values
-        ]
+        rat["pred_pond"] = np.dot(rat.iloc[:, :len(self.ratings)].values, self.ratings)
         rat["true_pond"] = np.where(rat["real"] == round(rat["pred_pond"]), 1, 0)
         rat["s2pond"] = abs(rat["pred_pond"] - rat["real"])
 
@@ -389,7 +386,3 @@ class MMSBM:
             "s2": s2,
             "s2pond": s2pond,
         }
-
-    @staticmethod
-    def _weighting(x, ratings):
-        return sum([a * b for (a, b) in zip(x, ratings)])
