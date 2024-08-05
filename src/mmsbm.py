@@ -344,9 +344,7 @@ class MMSBM:
 
         rat = pd.DataFrame(rat)
         rat["pred"] = np.argmax(rat.values, axis=1)
-
-        # Add the real results
-        rat = rat.assign(real=pd.Series(self.test[:, 2]))
+        rat['real'] = self.test[:, 2]
 
         # Remove observations without predictions
         rat = rat.loc[rat.iloc[:, : len(self.ratings)].sum(axis=1) != 0, :]
@@ -363,14 +361,15 @@ class MMSBM:
         # Same but weighed
         # Note that we are assuming that weights are the first R columns
         rat["pred_pond"] = np.dot(rat.iloc[:, :len(self.ratings)].values, self.ratings)
-        rat["true_pond"] = np.where(rat["real"] == round(rat["pred_pond"]), 1, 0)
-        rat["s2pond"] = abs(rat["pred_pond"] - rat["real"])
+        rat["true_pond"] = np.where(rat["real"] == np.round(rat["pred_pond"]), 1, 0)
+        rat["s2pond"] = np.abs(rat["pred_pond"] - rat["real"])
 
         return rat
 
     @staticmethod
     def _compute_final_stats(rat):
         n = rat.shape[0]
+
         return {
             "accuracy": rat["true"].sum() / n,
             "one_off_accuracy": rat["almost"].sum() / n,
