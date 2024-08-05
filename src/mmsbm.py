@@ -370,19 +370,11 @@ class MMSBM:
 
     @staticmethod
     def _compute_final_stats(rat):
-        # Final model quality indicators
-        accuracy = rat["true"].sum() / rat.shape[0]
-        one_off_accuracy = rat["almost"].sum() / rat.shape[0]
-        mae = 1 - rat["true_pond"].sum() / rat.shape[0]
-
-        # Errors
-        s2 = rat["s2"].sum()
-        s2pond = rat["s2pond"].sum()
-
+        n = rat.shape[0]
         return {
-            "accuracy": accuracy,
-            "one_off_accuracy": one_off_accuracy,
-            "mae": mae,
-            "s2": s2,
-            "s2pond": s2pond,
+            "accuracy": rat["true"].sum() / n,
+            "one_off_accuracy": rat["almost"].sum() / n,
+            "mae": 1 - rat["true_pond"].sum() / n,
+            "s2": rat["s2"].sum(),
+            "s2pond": rat["s2pond"].sum(),
         }
