@@ -1,4 +1,3 @@
-import logging
 import multiprocessing
 from datetime import datetime
 from itertools import repeat
@@ -8,13 +7,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from data_handler import DataHandler
-from expectation_maximization import (
-    normalize_with_d,
-    update_coefficients,
-    normalize_with_self,
-    compute_likelihood,
-    compute_prod_dist,
-)
+from expectation_maximization import ExpectationMaximization
 from helpers import structure_folds, get_n_per_group
 
 from src.logger import setup_logger
@@ -89,6 +82,10 @@ class MMSBM:
 
         self.logger = setup_logger("MMSBM")
 
+        self._normalization_factors = None
+        self._user_indices = None
+        self._item_indices = None
+
     def _prepare_objects(self, train):
 
         self.ratings = sorted(set(train[:, 2]))
@@ -100,6 +97,47 @@ class MMSBM:
         self.d1 = {a: list(train[train[:, 1] == a, 0]) for a in set(train[:, 1])}
 
         self.train = train
+
+        # Pre-compute normalization factors
+        self._normalization_factors = {
+            'user': np.array([np.repeat(max(len(a), 1), self.user_groups)
+                              for a in self.d0.values()]),
+            'item': np.array([np.repeat(max(len(a), 1), self.item_groups)
+                              for a in self.d1.values()])
+        }
+
+        # Pre-compute indices for update_coefficients
+        self._user_indices = [
+            np.where(train[:, 0] == a)[0] for a in range(self.p + 1)
+        ]
+        self._item_indices = [
+            np.where(train[:, 1] == a)[0] for a in range(self.m + 1)
+        ]
+        self._rating_indices = [
+            np.where(train[:, 2] == a)[0] for a in self.ratings
+        ]
+
+        # Pre-compute dimensions
+        self._dims = {
+            'n_samples': len(train),
+            'n_user_groups': self.user_groups,
+            'n_item_groups': self.item_groups,
+            'n_ratings': len(self.ratings)
+        }
+
+        # Pre-allocate arrays for results
+        self._omegas = np.zeros((self._dims['n_samples'],
+                                 self._dims['n_user_groups'],
+                                 self._dims['n_item_groups']))
+
+        # Initialize the expectation-maximization algorithm
+        self.em = ExpectationMaximization(
+            dims=self._dims,
+            user_indices=self._user_indices,
+            item_indices=self._item_indices,
+            rating_indices=self._rating_indices,
+            norm_factors=self._normalization_factors
+        )
 
     def fit(self, data, silent=False):
         """
@@ -125,32 +163,75 @@ class MMSBM:
         with multiprocessing.Pool(processes=self.sampling) as pool:
             self.results = pool.starmap(self.run_one_sampling, zip(repeat(train), self.child_states, list(range(self.sampling))))
 
+    def normalize_with_d(self, df, type_):
+        """Optimized version using pre-computed normalization factors"""
+        return df / self._normalization_factors[type_]
+
+    def compute_omegas(self, data, theta, eta, pr):
+        """Optimized version using pre-computed dimensions"""
+        user_indices = data[:, 0]
+        item_indices = data[:, 1]
+        rating_indices = data[:, 2]
+
+        self._omegas[:] = (theta[user_indices][:, :, np.newaxis] *
+                           eta[item_indices][:, np.newaxis, :] *
+                           np.moveaxis(pr[:, :, rating_indices], -1, 0))
+
+        return self._omegas
+
+    def update_coefficients(self, data, theta, eta, pr):
+        """Optimized version using pre-computed dimensions and cached indices"""
+        omegas = self.compute_omegas(data, theta, eta, pr)
+        sum_omega = np.zeros(self._dims['n_samples'])
+        np.sum(omegas, axis=(1, 2), out=sum_omega)
+
+        increments = np.divide(omegas, sum_omega[:, np.newaxis, np.newaxis])
+
+        n_theta = np.zeros((self.p + 1, self._dims['n_user_groups']))
+        n_eta = np.zeros((self.m + 1, self._dims['n_item_groups']))
+        n_pr = np.zeros((self._dims['n_user_groups'],
+                         self._dims['n_item_groups'],
+                         self._dims['n_ratings']))
+
+        # Usar les arrays pre-allocades
+        for idx, indices in enumerate(self._user_indices):
+            n_theta[idx] = increments[indices].sum(axis=(0, -1))
+
+        for idx, indices in enumerate(self._item_indices):
+            n_eta[idx] = increments[indices].sum(axis=(0, 1))
+
+        for idx, indices in enumerate(self._rating_indices):
+            n_pr[:, :, idx] = increments[indices].sum(axis=0)
+
+        return n_theta, n_eta, n_pr
+
     def run_one_sampling(self, data, seed, i):
         rng = np.random.default_rng(seed)
 
-        # Generate random (but normalized) inits
-        theta = normalize_with_d(rng.random((self.p + 1, self.user_groups)), self.d0)
-        eta = normalize_with_d(rng.random((self.m + 1, self.item_groups)), self.d1)
-        pr = normalize_with_self(rng.random((self.user_groups, self.item_groups, self.r + 1)))
+        # Inicialitzacions amb l'objecte EM
+        theta = self.em.normalize_with_d(
+            rng.random((self.p + 1, self._dims['n_user_groups'])), 'user')
+        eta = self.em.normalize_with_d(
+            rng.random((self.m + 1, self._dims['n_item_groups'])), 'item')
+        pr = self.em.normalize_with_self(
+            rng.random((self._dims['n_user_groups'],
+                        self._dims['n_item_groups'],
+                        self._dims['n_ratings'])))
 
-        # Do the work
-        for j in tqdm(range(self.iterations), position=0):
-            # This is the crux of the script; please see expectation_maximization.py
-            n_theta, n_eta, npr = update_coefficients(
-                data=data, ratings=self.ratings, theta=theta, eta=eta, pr=pr
+        for j in tqdm(range(self.iterations)):
+            n_theta, n_eta, npr = self.em.update_coefficients(
+                data=data, theta=theta, eta=eta, pr=pr
             )
 
-            # Update with normalization
-            theta = normalize_with_d(n_theta, self.d0)
-            eta = normalize_with_d(n_eta, self.d1)
-            pr = normalize_with_self(npr)
+            theta = self.em.normalize_with_d(n_theta, 'user')
+            eta = self.em.normalize_with_d(n_eta, 'item')
+            pr = self.em.normalize_with_self(npr)
 
             if self.debug and j % 50 == 0:
-                # For debugging purposes; compute likelihood every once in a while
-                likelihood = compute_likelihood(self.train, theta, eta, pr)
+                likelihood = self.em.compute_likelihood(self.train, theta, eta, pr)
                 self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
 
-        likelihood = compute_likelihood(self.train, theta, eta, pr)
+        likelihood = self.em.compute_likelihood(self.train, theta, eta, pr)
 
         return {
             "likelihood": likelihood,
@@ -185,7 +266,7 @@ class MMSBM:
 
         # Get the info for all the runs
         rats = [
-            compute_prod_dist(test, a["theta"], a["eta"], a["pr"])
+            self.em.compute_prod_dist(test, a["theta"], a["eta"], a["pr"])
             for a in self.results
         ]
         prs = np.array([a["pr"] for a in self.results])
@@ -370,3 +451,17 @@ class MMSBM:
             "s2": rat["s2"].sum(),
             "s2pond": rat["s2pond"].sum(),
         }
+
+    def compute_likelihood(self, data, theta, eta, pr):
+        """Optimized version using pre-computed arrays and handling zeros"""
+        omegas = self.compute_omegas(data, theta, eta, pr)
+        sum_omega = np.zeros(self._dims['n_samples'])
+        np.sum(omegas, axis=(1, 2), out=sum_omega)
+
+        # Small epsilon to avoid log(0)
+        epsilon = np.finfo(float).eps
+        safe_omegas = np.maximum(omegas, epsilon)
+        safe_sums = np.maximum(sum_omega, epsilon)
+
+        return np.sum(safe_omegas * np.log(safe_omegas) -
+                      safe_omegas * np.log(safe_sums[:, np.newaxis, np.newaxis]))

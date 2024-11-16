@@ -1,87 +1,109 @@
-# These are the functions that carry out the Expectation-Maximization procedure
+# expectation_maximization.py
 
 import numpy as np
 
 
-def compute_omegas(data, theta, eta, pr):
-    user_indices = data[:, 0]
-    item_indices = data[:, 1]
-    rating_indices = data[:, 2]
+class ExpectationMaximization:
+    def __init__(self, dims, user_indices, item_indices, rating_indices, norm_factors):
+        """
+        Initialize EM algorithm with pre-computed values
 
-    # Shape: (input_length, num_user_groups, 1)
-    theta_expanded = theta[user_indices][:, :, np.newaxis]
-    # Shape: (input_length, 1, num_item_groups)
-    eta_expanded = eta[item_indices][:, np.newaxis, :]
-    # Shape: (num_user_groups, num_item_groups, input_length)
-    pr_selected = pr[:, :, rating_indices]
+        Parameters
+        ----------
+        dims : dict
+            Dictionary with dimensions (n_samples, n_user_groups, n_item_groups, n_ratings)
+        user_indices : list
+            Pre-computed user indices for each user
+        item_indices : list
+            Pre-computed item indices for each item
+        rating_indices : list
+            Pre-computed rating indices for each rating
+        norm_factors : dict
+            Pre-computed normalization factors for users and items
+        """
+        self._dims = dims
+        self._user_indices = user_indices
+        self._item_indices = item_indices
+        self._rating_indices = rating_indices
+        self._normalization_factors = norm_factors
 
-    # Adjust pr_selected to match dimensions for broadcasting
-    # Shape: (input_length, num_user_groups, num_item_groups)
-    pr_expanded = np.moveaxis(pr_selected, -1, 0)
+        # Pre-allocate arrays for results
+        self._omegas = np.zeros((dims['n_samples'],
+                                 dims['n_user_groups'],
+                                 dims['n_item_groups']))
 
-    # Returned shape: (input_length, num_user_groups, num_item_groups)
-    return theta_expanded * (eta_expanded * pr_expanded)
+    def compute_omegas(self, data, theta, eta, pr):
+        """Compute omegas using pre-allocated arrays"""
+        user_indices = data[:, 0]
+        item_indices = data[:, 1]
+        rating_indices = data[:, 2]
 
+        self._omegas[:] = (theta[user_indices][:, :, np.newaxis] *
+                           eta[item_indices][:, np.newaxis, :] *
+                           np.moveaxis(pr[:, :, rating_indices], -1, 0))
 
-def update_coefficients(data, ratings, theta, eta, pr):
+        return self._omegas
 
-    # Shape: (input_length, num_user_groups, num_item_groups)
-    omegas = compute_omegas(data, theta, eta, pr)
-    # Shape: (input_length)
-    sum_omega = omegas.sum(axis=-1).sum(axis=-1)
-    # Shape: (input_length, num_user_groups, num_item_groups)
-    increments = omegas / sum_omega[:, np.newaxis, np.newaxis]
+    def update_coefficients(self, data, theta, eta, pr):
+        """Update coefficients using pre-computed indices"""
+        omegas = self.compute_omegas(data, theta, eta, pr)
+        sum_omega = np.zeros(self._dims['n_samples'])
+        np.sum(omegas, axis=(1, 2), out=sum_omega)
 
-    # You may want to vectorize this, but, for some reason, it ends up being slower
-    n_theta = np.array(
-        [
-            increments[np.where(data[:, 0] == a)].sum(-1).sum(0)
-            for a in range(theta.shape[0])
-        ]
-    )
-    n_eta = np.array(
-        [
-            increments[np.where(data[:, 1] == a)].sum(0).sum(0)
-            for a in range(eta.shape[0])
-        ]
-    )
-    n_pr = np.swapaxes(
-        np.swapaxes(
-            np.array([increments[np.where(data[:, 2] == a)].sum(0) for a in ratings]),
-            0,
-            1,
-        ),
-        1,
-        2,
-    )
+        increments = np.divide(omegas, sum_omega[:, np.newaxis, np.newaxis])
 
-    return n_theta, n_eta, n_pr
+        n_theta = np.zeros((len(self._user_indices), self._dims['n_user_groups']))
+        n_eta = np.zeros((len(self._item_indices), self._dims['n_item_groups']))
+        n_pr = np.zeros((self._dims['n_user_groups'],
+                         self._dims['n_item_groups'],
+                         self._dims['n_ratings']))
 
+        for idx, indices in enumerate(self._user_indices):
+            n_theta[idx] = increments[indices].sum(axis=(0, -1))
 
-def normalize_with_d(df, d):
-    return df / [np.repeat(max(len(a), 1), df.shape[1]) for a in list(d.values())]
+        for idx, indices in enumerate(self._item_indices):
+            n_eta[idx] = increments[indices].sum(axis=(0, 1))
 
+        for idx, indices in enumerate(self._rating_indices):
+            n_pr[:, :, idx] = increments[indices].sum(axis=0)
 
-def normalize_with_self(df):
-    # Note: only valid for 3d arrays
-    temp = df.reshape((df.shape[0] * df.shape[1], df.shape[2]))
-    return (
-        temp / (np.where(temp.sum(axis=1) == 0, 1, temp.sum(axis=1)))[:, np.newaxis]
-    ).reshape(df.shape)
+        return n_theta, n_eta, n_pr
 
+    def normalize_with_d(self, df, type_):
+        """Normalize using pre-computed factors"""
+        return df / self._normalization_factors[type_]
 
-def compute_likelihood(data, theta, eta, pr):
-    omegas = compute_omegas(data, theta, eta, pr)
-    return sum([a * np.log(b) / b for (a, b) in zip(omegas, omegas.sum(-1).sum(-1))])
+    @staticmethod
+    def normalize_with_self(df):
+        """Normalize 3D arrays"""
+        temp = df.reshape((df.shape[0] * df.shape[1], df.shape[2]))
+        return (
+                temp / (np.where(temp.sum(axis=1) == 0, 1, temp.sum(axis=1)))[:, np.newaxis]
+        ).reshape(df.shape)
 
+    def compute_likelihood(self, data, theta, eta, pr):
+        """Compute likelihood with handling of zeros"""
+        omegas = self.compute_omegas(data, theta, eta, pr)
+        sum_omega = np.zeros(self._dims['n_samples'])
+        np.sum(omegas, axis=(1, 2), out=sum_omega)
 
-def prod_dist(x, theta, eta, pr):
-    return (
-        (theta[x[0]][:, np.newaxis, np.newaxis] * (eta[x[1], :][:, np.newaxis] * pr))
-        .sum(axis=0)
-        .sum(axis=0)
-    )
+        epsilon = np.finfo(float).eps
+        safe_omegas = np.maximum(omegas, epsilon)
+        safe_sums = np.maximum(sum_omega, epsilon)
 
+        return np.sum(safe_omegas * np.log(safe_omegas) -
+                      safe_omegas * np.log(safe_sums[:, np.newaxis, np.newaxis]))
 
-def compute_prod_dist(data, theta, eta, pr):
-    return np.array([prod_dist(a, theta, eta, pr) for a in data])
+    @staticmethod
+    def prod_dist(x, theta, eta, pr):
+        """Compute product distribution for a single data point"""
+        return (
+            (theta[x[0]][:, np.newaxis, np.newaxis] *
+             (eta[x[1], :][:, np.newaxis] * pr))
+            .sum(axis=0)
+            .sum(axis=0)
+        )
+
+    def compute_prod_dist(self, data, theta, eta, pr):
+        """Compute product distribution for all data points"""
+        return np.array([self.prod_dist(a, theta, eta, pr) for a in data])
