@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="mmsbm",
-    version="0.2.0",
+    version="0.2.1",
     description="Compute Mixed Membership Stochastic Block Models.",
     py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers"],
     package_dir={"": "src"},
@@ -21,6 +21,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Intended Audience :: Science/Research",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
