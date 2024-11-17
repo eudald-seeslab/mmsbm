@@ -140,15 +140,18 @@ class MMSBM:
         )
 
     def fit(self, data, silent=False):
-        """
-        Fit the MMSBM with the given data.
-        :param data: {dataframe} of shape (n_samples, 3)
-            The input data. The first column has to be the user identifier, the second column the item identifier and
-            the third the rating.
-        :param silent: boolean.
-            Do you want to shut off most of the notifications? (Mostly for internal use)
-        :return: None
-        """
+        """Fits the MMSBM using multiple EM runs.
+
+         Performs 'sampling' parallel runs of the EM algorithm and keeps track
+         of all results for later model selection.
+
+         Args:
+             data: DataFrame with columns [users, items, ratings]
+             silent: If True, suppresses progress output
+
+         See Also:
+             cv_fit: For cross-validated model fitting
+         """
 
         if not silent:
             self.logger.info(
@@ -163,48 +166,43 @@ class MMSBM:
         with multiprocessing.Pool(processes=self.sampling) as pool:
             self.results = pool.starmap(self.run_one_sampling, zip(repeat(train), self.child_states, list(range(self.sampling))))
 
-    def normalize_with_d(self, df, type_):
-        """Optimized version using pre-computed normalization factors"""
-        return df / self._normalization_factors[type_]
-
-    def compute_omegas(self, data, theta, eta, pr):
-        """Optimized version using pre-computed dimensions"""
-        user_indices = data[:, 0]
-        item_indices = data[:, 1]
-        rating_indices = data[:, 2]
-
-        self._omegas[:] = (theta[user_indices][:, :, np.newaxis] *
-                           eta[item_indices][:, np.newaxis, :] *
-                           np.moveaxis(pr[:, :, rating_indices], -1, 0))
-
-        return self._omegas
-
-    def update_coefficients(self, data, theta, eta, pr):
-        """Optimized version using pre-computed dimensions and cached indices"""
-        omegas = self.compute_omegas(data, theta, eta, pr)
-        sum_omega = np.zeros(self._dims['n_samples'])
-        np.sum(omegas, axis=(1, 2), out=sum_omega)
-
-        increments = np.divide(omegas, sum_omega[:, np.newaxis, np.newaxis])
-
-        n_theta = np.zeros((self.p + 1, self._dims['n_user_groups']))
-        n_eta = np.zeros((self.m + 1, self._dims['n_item_groups']))
-        n_pr = np.zeros((self._dims['n_user_groups'],
-                         self._dims['n_item_groups'],
-                         self._dims['n_ratings']))
-
-        for idx, indices in enumerate(self._user_indices):
-            n_theta[idx] = increments[indices].sum(axis=(0, -1))
-
-        for idx, indices in enumerate(self._item_indices):
-            n_eta[idx] = increments[indices].sum(axis=(0, 1))
-
-        for idx, indices in enumerate(self._rating_indices):
-            n_pr[:, :, idx] = increments[indices].sum(axis=0)
-
-        return n_theta, n_eta, n_pr
-
     def run_one_sampling(self, data, seed, i):
+        """Executes an EM optimization run with random initialization.
+
+        Performs one complete run of the Expectation-Maximization algorithm:
+        1. Initializes model parameters randomly using the provided seed
+        2. Iteratively updates parameters using the EM algorithm
+        3. Monitors convergence through likelihood if in debug mode
+        4. Returns final parameters and likelihood
+
+        Args:
+            data: Array of shape (n_samples, 3) with [user_idx, item_idx, rating]
+                Training data for this sampling run.
+            seed: int or numpy.random.SeedSequence
+                Random seed for parameter initialization.
+                Ensures reproducibility across runs.
+            i: int
+                Index of current sampling run.
+                Used for logging and progress tracking.
+
+        Returns:
+            dict: Final model state containing:
+                - likelihood: Final log-likelihood of the model
+                - pr: Rating probabilities, shape (n_user_groups, n_item_groups, n_ratings)
+                - theta: User group memberships, shape (n_users, n_user_groups)
+                - eta: Item group memberships, shape (n_items, n_item_groups)
+
+        Notes:
+            - Parameters are initialized randomly but normalized to valid probabilities
+            - Uses vectorized EM implementation for efficiency
+            - If debug=True, prints likelihood every 50 iterations
+            - Each run is independent and can converge to different local optima
+
+        See Also:
+            fit: For running multiple sampling runs
+            ExpectationMaximization.update_coefficients: For EM implementation details
+        """
+
         rng = np.random.default_rng(seed)
 
         theta = self.em.normalize_with_d(
@@ -247,14 +245,15 @@ class MMSBM:
         )
 
     def predict(self, data):
-        """
-        Use the fitted model to predict group memberships of the users of new data.
-        :param data: {dataframe} of shape (n_samples, 3)
-            The data to predict on. The first column has to be the user identifier, the second column the item
-            identifier and the third the rating.
-        :return: {ndarray}, shape (n_samples, user_groups)
-            Prediction matrix. A k column, n_samples numpy array whereby each row gives the probability of each user
-            belonging to each group.
+        """Predicts ratings for new user-item pairs.
+
+        Uses the best model from all sampling runs to make predictions.
+
+        Args:
+            data: DataFrame with columns [users, items, ratings]
+
+        Returns:
+            Array with rating probabilities for each possible rating value
         """
 
         self._check_is_fitted()
@@ -285,38 +284,36 @@ class MMSBM:
 
         return self.prediction_matrix
 
-    def choose_best_run(self, rats):
-
-        # We compute the accuracy of all of them and return the index of the best
-        accuracies = [self._compute_stats(a)["accuracy"] for a in rats]
-        return accuracies.index(max(accuracies))
-
     def score(self, silent=False):
-        """
-        Compute the goodness of fit statistics as well as the best possible model if multiple have been fitted.
-        :param silent: {boolean}.
-            Do you want to shut off most of the notifications? (Mostly for internal use)
-        :return: {dict}
-            Dictionary with two sub-dictionaries, one for the goodness of fit statistics (stats) and another one with
-            the computed objects in the model:
-                stats: {dict}
-                    accuracy: float
-                        Ratio of observations we got right.
-                    one_off_accuracy: float
-                        Ratio of observations we got at most one point away from truth.
-                    mae: integer
-                        Mean absolute error.
-                    s2: integer
-                        Squared error.
-                    s2pond: float
-                        Weighted distance between predicted and reality.
-                objects: {dict}
-                    theta: ndarray (n_items, n_item_groups)
-                        Item loadings on item groups.
-                    eta: ndarray (n_samples, n_user_groups)
-                        User loadings on user groups.
-                    pr: ndarray (n_ratings, n_user_groups, n_item_groups)
-                        User group loadings for item groups for each rating.
+        """Computes model performance metrics and returns fitted parameters.
+
+        Evaluates the model's predictive performance using multiple metrics
+        and returns both the evaluation statistics and the fitted model parameters.
+
+        Args:
+            silent: If True, suppresses logging output. Defaults to False.
+
+        Returns:
+            dict: Contains two sub-dictionaries:
+                stats: Model performance metrics
+                    - accuracy: Percentage of exactly correct predictions
+                    - one_off_accuracy: Percentage of predictions off by at most 1
+                    - mae: Mean Absolute Error of predictions
+                    - s2: Sum of squared differences between predicted and actual ratings
+                    - s2pond: Weighted squared error considering rating probabilities
+                objects: Fitted model parameters
+                    - theta: User group memberships, shape (n_users, n_user_groups)
+                    - eta: Item group memberships, shape (n_items, n_item_groups)
+                    - pr: Rating probabilities per group pair, shape (n_user_groups, n_item_groups, n_ratings)
+
+        Example:
+            >>> results = model.score()
+            >>> print(f"Model accuracy: {results['stats']['accuracy']:.3f}")
+            >>> print(f"User memberships:\n{results['objects']['theta']}")
+
+        See Also:
+            predict: For making predictions on new data
+            cv_fit: For cross-validated model evaluation
         """
 
         self._check_has_predictions()
@@ -340,14 +337,47 @@ class MMSBM:
         }
 
     def cv_fit(self, data, folds=5):
-        """
-        Fit MMSBM with 'folds' fold cross-validation.
-        :param data: {dataframe} of shape (n_samples, 3)
-            The input data. The first column has to be the user identifier, the second column the item identifier and
-            the third the rating.
-        :param folds: {integer}
-            Number of folds. It must not exceed the number of different users or items.
-        :return: None
+        """Fits the model using k-fold cross-validation.
+
+        Splits the data into k folds and performs multiple training runs, each time
+        holding out one fold for validation. This provides a more robust estimate
+        of model performance and helps avoid overfitting.
+
+        The function:
+        1. Splits users into k groups
+        2. For each fold:
+            - Uses k-1 groups for training
+            - Tests on the remaining group
+            - Runs multiple sampling iterations
+        3. Returns accuracies for each fold
+
+        Args:
+            data: DataFrame with user, item, and rating columns
+                The input data for model fitting and validation.
+                Shape: (n_samples, 3)
+            folds: int, default=5
+                Number of cross-validation folds.
+                Must not exceed the number of unique users or items.
+
+        Returns:
+            list: Prediction accuracies for each fold
+                Can be used to compute mean performance and confidence intervals.
+
+        Example:
+            >>> accuracies = model.cv_fit(data, folds=5)
+            >>> print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
+
+        Raises:
+            AssertionError: If number of folds exceeds number of unique items.
+
+        Notes:
+            - Each fold preserves the user rating distribution
+            - Uses parallel processing for sampling runs
+            - Stores best model parameters from all folds
+
+        See Also:
+            fit: For simple model fitting without cross-validation
+            score: For evaluating model performance
         """
 
         items_per_fold = structure_folds(data, folds)
@@ -404,6 +434,12 @@ class MMSBM:
 
         return accuracies
 
+    def choose_best_run(self, rats):
+
+        # We compute the accuracy of all of them and return the index of the best
+        accuracies = [self._compute_stats(a)["accuracy"] for a in rats]
+        return accuracies.index(max(accuracies))
+
     def _compute_stats(self, rat):
         # How did we do?
         rat = self._compute_indicators(rat)
@@ -452,7 +488,7 @@ class MMSBM:
 
     def compute_likelihood(self, data, theta, eta, pr):
         """Optimized version using pre-computed arrays and handling zeros"""
-        omegas = self.compute_omegas(data, theta, eta, pr)
+        omegas = self.em.compute_omegas(data, theta, eta, pr)
         sum_omega = np.zeros(self._dims['n_samples'])
         np.sum(omegas, axis=(1, 2), out=sum_omega)
 
