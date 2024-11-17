@@ -1,4 +1,3 @@
-import logging
 import multiprocessing
 from datetime import datetime
 from itertools import repeat
@@ -8,14 +7,10 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from data_handler import DataHandler
-from expectation_maximization import (
-    normalize_with_d,
-    update_coefficients,
-    normalize_with_self,
-    compute_likelihood,
-    compute_prod_dist,
-)
+from expectation_maximization import ExpectationMaximization
 from helpers import structure_folds, get_n_per_group
+
+from src.logger import setup_logger
 
 
 class MMSBM:
@@ -85,40 +80,78 @@ class MMSBM:
         ss = self.rng.bit_generator._seed_seq
         self.child_states = ss.spawn(sampling)
 
-        self.logger = logging.getLogger("MMSBM")
-        logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+        self.logger = setup_logger("MMSBM")
+
+        self._normalization_factors = None
+        self._user_indices = None
+        self._item_indices = None
 
     def _prepare_objects(self, train):
 
-        # Create a few dicts with the relationships
-        d0 = {}
-        d1 = {}
-        [d0.update({a: list(train[train[:, 0] == a, 1])}) for a in set(train[:, 0])]
-        [d1.update({a: list(train[train[:, 1] == a, 0])}) for a in set(train[:, 1])]
         self.ratings = sorted(set(train[:, 2]))
         self.r = max(self.ratings)
         self.p = int(train[:, 0].max())
         self.m = int(train[:, 1].max())
 
-        # If, for some reason, there are missing links, we need to fill them:
-        # TODO: I think this can be safely removed
-        [d0.update({a: []}) for a in set(range(self.p)).difference(set(d0.keys()))]
-        [d1.update({a: []}) for a in set(range(self.m)).difference(set(d1.keys()))]
+        self.d0 = {a: list(train[train[:, 0] == a, 1]) for a in set(train[:, 0])}
+        self.d1 = {a: list(train[train[:, 1] == a, 0]) for a in set(train[:, 1])}
 
         self.train = train
-        self.d0 = d0
-        self.d1 = d1
+
+        # Pre-compute normalization factors
+        self._normalization_factors = {
+            'user': np.array([np.repeat(max(len(a), 1), self.user_groups)
+                              for a in self.d0.values()]),
+            'item': np.array([np.repeat(max(len(a), 1), self.item_groups)
+                              for a in self.d1.values()])
+        }
+
+        # Pre-compute indices for update_coefficients
+        self._user_indices = [
+            np.where(train[:, 0] == a)[0] for a in range(self.p + 1)
+        ]
+        self._item_indices = [
+            np.where(train[:, 1] == a)[0] for a in range(self.m + 1)
+        ]
+        self._rating_indices = [
+            np.where(train[:, 2] == a)[0] for a in self.ratings
+        ]
+
+        # Pre-compute dimensions
+        self._dims = {
+            'n_samples': len(train),
+            'n_user_groups': self.user_groups,
+            'n_item_groups': self.item_groups,
+            'n_ratings': len(self.ratings)
+        }
+
+        # Pre-allocate arrays for results
+        self._omegas = np.zeros((self._dims['n_samples'],
+                                 self._dims['n_user_groups'],
+                                 self._dims['n_item_groups']))
+
+        # Initialize the expectation-maximization algorithm
+        self.em = ExpectationMaximization(
+            dims=self._dims,
+            user_indices=self._user_indices,
+            item_indices=self._item_indices,
+            rating_indices=self._rating_indices,
+            norm_factors=self._normalization_factors
+        )
 
     def fit(self, data, silent=False):
-        """
-        Fit the MMSBM with the given data.
-        :param data: {dataframe} of shape (n_samples, 3)
-            The input data. The first column has to be the user identifier, the second column the item identifier and
-            the third the rating.
-        :param silent: boolean.
-            Do you want to shut off most of the notifications? (Mostly for internal use)
-        :return: None
-        """
+        """Fits the MMSBM using multiple EM runs.
+
+         Performs 'sampling' parallel runs of the EM algorithm and keeps track
+         of all results for later model selection.
+
+         Args:
+             data: DataFrame with columns [users, items, ratings]
+             silent: If True, suppresses progress output
+
+         See Also:
+             cv_fit: For cross-validated model fitting
+         """
 
         if not silent:
             self.logger.info(
@@ -134,36 +167,67 @@ class MMSBM:
             self.results = pool.starmap(self.run_one_sampling, zip(repeat(train), self.child_states, list(range(self.sampling))))
 
     def run_one_sampling(self, data, seed, i):
+        """Executes an EM optimization run with random initialization.
+
+        Performs one complete run of the Expectation-Maximization algorithm:
+        1. Initializes model parameters randomly using the provided seed
+        2. Iteratively updates parameters using the EM algorithm
+        3. Monitors convergence through likelihood if in debug mode
+        4. Returns final parameters and likelihood
+
+        Args:
+            data: Array of shape (n_samples, 3) with [user_idx, item_idx, rating]
+                Training data for this sampling run.
+            seed: int or numpy.random.SeedSequence
+                Random seed for parameter initialization.
+                Ensures reproducibility across runs.
+            i: int
+                Index of current sampling run.
+                Used for logging and progress tracking.
+
+        Returns:
+            dict: Final model state containing:
+                - likelihood: Final log-likelihood of the model
+                - pr: Rating probabilities, shape (n_user_groups, n_item_groups, n_ratings)
+                - theta: User group memberships, shape (n_users, n_user_groups)
+                - eta: Item group memberships, shape (n_items, n_item_groups)
+
+        Notes:
+            - Parameters are initialized randomly but normalized to valid probabilities
+            - Uses vectorized EM implementation for efficiency
+            - If debug=True, prints likelihood every 50 iterations
+            - Each run is independent and can converge to different local optima
+
+        See Also:
+            fit: For running multiple sampling runs
+            ExpectationMaximization.update_coefficients: For EM implementation details
+        """
+
         rng = np.random.default_rng(seed)
 
-        # Generate random (but normalized) inits
-        theta = normalize_with_d(rng.random((self.p + 1, self.user_groups)), self.d0)
-        eta = normalize_with_d(rng.random((self.m + 1, self.item_groups)), self.d1)
-        pr = normalize_with_self(rng.random((self.user_groups, self.item_groups, self.r + 1)))
+        theta = self.em.normalize_with_d(
+            rng.random((self.p + 1, self._dims['n_user_groups'])), 'user')
+        eta = self.em.normalize_with_d(
+            rng.random((self.m + 1, self._dims['n_item_groups'])), 'item')
+        pr = self.em.normalize_with_self(
+            rng.random((self._dims['n_user_groups'],
+                        self._dims['n_item_groups'],
+                        self._dims['n_ratings'])))
 
-        # Do the work
-        for j in tqdm(range(self.iterations), position=0):
-            # This is the crux of the script; please see expectation_maximization.py
-            n_theta, n_eta, npr = update_coefficients(
-                data=data, ratings=self.ratings, theta=theta, eta=eta, pr=pr
+        for j in tqdm(range(self.iterations)):
+            n_theta, n_eta, npr = self.em.update_coefficients(
+                data=data, theta=theta, eta=eta, pr=pr
             )
 
-            # Update with normalization
-            theta = normalize_with_d(n_theta, self.d0)
-            eta = normalize_with_d(n_eta, self.d1)
-            pr = normalize_with_self(npr)
+            theta = self.em.normalize_with_d(n_theta, 'user')
+            eta = self.em.normalize_with_d(n_eta, 'item')
+            pr = self.em.normalize_with_self(npr)
 
-            if self.debug:
-                # For debugging purposes; compute likelihood every once in a while
-                if j % 50 == 0:
-                    likelihood = compute_likelihood(
-                        self.train, theta, eta, pr
-                    )
-                    self.logger.debug(
-                        f"\nLikelihood at run {i} is {likelihood.sum():.0f}"
-                    )
+            if self.debug and j % 50 == 0:
+                likelihood = self.em.compute_likelihood(self.train, theta, eta, pr)
+                self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
 
-        likelihood = compute_likelihood(self.train, theta, eta, pr)
+        likelihood = self.em.compute_likelihood(self.train, theta, eta, pr)
 
         return {
             "likelihood": likelihood,
@@ -181,14 +245,15 @@ class MMSBM:
         )
 
     def predict(self, data):
-        """
-        Use the fitted model to predict group memberships of the users of new data.
-        :param data: {dataframe} of shape (n_samples, 3)
-            The data to predict on. The first column has to be the user identifier, the second column the item
-            identifier and the third the rating.
-        :return: {ndarray}, shape (n_samples, user_groups)
-            Prediction matrix. A k column, n_samples numpy array whereby each row gives the probability of each user
-            belonging to each group.
+        """Predicts ratings for new user-item pairs.
+
+        Uses the best model from all sampling runs to make predictions.
+
+        Args:
+            data: DataFrame with columns [users, items, ratings]
+
+        Returns:
+            Array with rating probabilities for each possible rating value
         """
 
         self._check_is_fitted()
@@ -198,7 +263,7 @@ class MMSBM:
 
         # Get the info for all the runs
         rats = [
-            compute_prod_dist(test, a["theta"], a["eta"], a["pr"])
+            self.em.compute_prod_dist(test, a["theta"], a["eta"], a["pr"])
             for a in self.results
         ]
         prs = np.array([a["pr"] for a in self.results])
@@ -219,38 +284,36 @@ class MMSBM:
 
         return self.prediction_matrix
 
-    def choose_best_run(self, rats):
-
-        # We compute the accuracy of all of them and return the index of the best
-        accuracies = [self._compute_stats(a)["accuracy"] for a in rats]
-        return accuracies.index(max(accuracies))
-
     def score(self, silent=False):
-        """
-        Compute the goodness of fit statistics as well as the best possible model if multiple have been fitted.
-        :param silent: {boolean}.
-            Do you want to shut off most of the notifications? (Mostly for internal use)
-        :return: {dict}
-            Dictionary with two sub-dictionaries, one for the goodness of fit statistics (stats) and another one with
-            the computed objects in the model:
-                stats: {dict}
-                    accuracy: float
-                        Ratio of observations we got right.
-                    one_off_accuracy: float
-                        Ratio of observations we got at most one point away from truth.
-                    mae: integer
-                        Mean absolute error.
-                    s2: integer
-                        Squared error.
-                    s2pond: float
-                        Weighted distance between predicted and reality.
-                objects: {dict}
-                    theta: ndarray (n_items, n_item_groups)
-                        Item loadings on item groups.
-                    eta: ndarray (n_samples, n_user_groups)
-                        User loadings on user groups.
-                    pr: ndarray (n_ratings, n_user_groups, n_item_groups)
-                        User group loadings for item groups for each rating.
+        """Computes model performance metrics and returns fitted parameters.
+
+        Evaluates the model's predictive performance using multiple metrics
+        and returns both the evaluation statistics and the fitted model parameters.
+
+        Args:
+            silent: If True, suppresses logging output. Defaults to False.
+
+        Returns:
+            dict: Contains two sub-dictionaries:
+                stats: Model performance metrics
+                    - accuracy: Percentage of exactly correct predictions
+                    - one_off_accuracy: Percentage of predictions off by at most 1
+                    - mae: Mean Absolute Error of predictions
+                    - s2: Sum of squared differences between predicted and actual ratings
+                    - s2pond: Weighted squared error considering rating probabilities
+                objects: Fitted model parameters
+                    - theta: User group memberships, shape (n_users, n_user_groups)
+                    - eta: Item group memberships, shape (n_items, n_item_groups)
+                    - pr: Rating probabilities per group pair, shape (n_user_groups, n_item_groups, n_ratings)
+
+        Example:
+            >>> results = model.score()
+            >>> print(f"Model accuracy: {results['stats']['accuracy']:.3f}")
+            >>> print(f"User memberships:\n{results['objects']['theta']}")
+
+        See Also:
+            predict: For making predictions on new data
+            cv_fit: For cross-validated model evaluation
         """
 
         self._check_has_predictions()
@@ -259,12 +322,10 @@ class MMSBM:
         stats["likelihood"] = self.likelihood
 
         if not silent:
-            # Explain how we did
-            if self.debug:
-                self.logger.info(
-                    f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} "
-                    f"minutes."
-                )
+            self.logger.debug(
+                f"Done {self.sampling} runs in {(datetime.now() - self.start_time).total_seconds() / 60.0:.2f} "
+                f"minutes."
+            )
             self.logger.info(
                 f"The final accuracy is {stats['accuracy']}, the one off accuracy is {stats['one_off_accuracy']} "
                 f"and the MAE is {stats['mae']}."
@@ -276,14 +337,47 @@ class MMSBM:
         }
 
     def cv_fit(self, data, folds=5):
-        """
-        Fit MMSBM with 'folds' fold cross-validation.
-        :param data: {dataframe} of shape (n_samples, 3)
-            The input data. The first column has to be the user identifier, the second column the item identifier and
-            the third the rating.
-        :param folds: {integer}
-            Number of folds. It must not exceed the number of different users or items.
-        :return: None
+        """Fits the model using k-fold cross-validation.
+
+        Splits the data into k folds and performs multiple training runs, each time
+        holding out one fold for validation. This provides a more robust estimate
+        of model performance and helps avoid overfitting.
+
+        The function:
+        1. Splits users into k groups
+        2. For each fold:
+            - Uses k-1 groups for training
+            - Tests on the remaining group
+            - Runs multiple sampling iterations
+        3. Returns accuracies for each fold
+
+        Args:
+            data: DataFrame with user, item, and rating columns
+                The input data for model fitting and validation.
+                Shape: (n_samples, 3)
+            folds: int, default=5
+                Number of cross-validation folds.
+                Must not exceed the number of unique users or items.
+
+        Returns:
+            list: Prediction accuracies for each fold
+                Can be used to compute mean performance and confidence intervals.
+
+        Example:
+            >>> accuracies = model.cv_fit(data, folds=5)
+            >>> print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
+
+        Raises:
+            AssertionError: If number of folds exceeds number of unique items.
+
+        Notes:
+            - Each fold preserves the user rating distribution
+            - Uses parallel processing for sampling runs
+            - Stores best model parameters from all folds
+
+        See Also:
+            fit: For simple model fitting without cross-validation
+            score: For evaluating model performance
         """
 
         items_per_fold = structure_folds(data, folds)
@@ -340,6 +434,12 @@ class MMSBM:
 
         return accuracies
 
+    def choose_best_run(self, rats):
+
+        # We compute the accuracy of all of them and return the index of the best
+        accuracies = [self._compute_stats(a)["accuracy"] for a in rats]
+        return accuracies.index(max(accuracies))
+
     def _compute_stats(self, rat):
         # How did we do?
         rat = self._compute_indicators(rat)
@@ -352,9 +452,7 @@ class MMSBM:
 
         rat = pd.DataFrame(rat)
         rat["pred"] = np.argmax(rat.values, axis=1)
-
-        # Add the real results
-        rat = rat.assign(real=pd.Series(self.test[:, 2]))
+        rat['real'] = self.test[:, 2]
 
         # Remove observations without predictions
         rat = rat.loc[rat.iloc[:, : len(self.ratings)].sum(axis=1) != 0, :]
@@ -370,34 +468,34 @@ class MMSBM:
 
         # Same but weighed
         # Note that we are assuming that weights are the first R columns
-        rat["pred_pond"] = [
-            self._weighting(a, self.ratings)
-            for a in rat.iloc[:, : len(self.ratings)].values
-        ]
-        rat["true_pond"] = np.where(rat["real"] == round(rat["pred_pond"]), 1, 0)
-        rat["s2pond"] = abs(rat["pred_pond"] - rat["real"])
+        rat["pred_pond"] = np.dot(rat.iloc[:, :len(self.ratings)].values, self.ratings)
+        rat["true_pond"] = np.where(rat["real"] == np.round(rat["pred_pond"]), 1, 0)
+        rat["s2pond"] = np.abs(rat["pred_pond"] - rat["real"])
 
         return rat
 
     @staticmethod
     def _compute_final_stats(rat):
-        # Final model quality indicators
-        accuracy = rat["true"].sum() / rat.shape[0]
-        one_off_accuracy = rat["almost"].sum() / rat.shape[0]
-        mae = 1 - rat["true_pond"].sum() / rat.shape[0]
-
-        # Errors
-        s2 = rat["s2"].sum()
-        s2pond = rat["s2pond"].sum()
+        n = rat.shape[0]
 
         return {
-            "accuracy": accuracy,
-            "one_off_accuracy": one_off_accuracy,
-            "mae": mae,
-            "s2": s2,
-            "s2pond": s2pond,
+            "accuracy": rat["true"].sum() / n,
+            "one_off_accuracy": rat["almost"].sum() / n,
+            "mae": 1 - rat["true_pond"].sum() / n,
+            "s2": rat["s2"].sum(),
+            "s2pond": rat["s2pond"].sum(),
         }
 
-    @staticmethod
-    def _weighting(x, ratings):
-        return sum([a * b for (a, b) in zip(x, ratings)])
+    def compute_likelihood(self, data, theta, eta, pr):
+        """Optimized version using pre-computed arrays and handling zeros"""
+        omegas = self.em.compute_omegas(data, theta, eta, pr)
+        sum_omega = np.zeros(self._dims['n_samples'])
+        np.sum(omegas, axis=(1, 2), out=sum_omega)
+
+        # Small epsilon to avoid log(0)
+        epsilon = np.finfo(float).eps
+        safe_omegas = np.maximum(omegas, epsilon)
+        safe_sums = np.maximum(sum_omega, epsilon)
+
+        return np.sum(safe_omegas * np.log(safe_omegas) -
+                      safe_omegas * np.log(safe_sums[:, np.newaxis, np.newaxis]))

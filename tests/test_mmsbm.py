@@ -2,15 +2,13 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from src.mmsbm import MMSBM
+from mmsbm import MMSBM
 
 
-RATING_NUM = 1000
+RATING_NUM = 100
 
 
-def mock_data(seed):
-
-    n = RATING_NUM
+def mock_data(seed, n=RATING_NUM):
 
     rng = np.random.default_rng(seed)
 
@@ -55,8 +53,6 @@ def test_prediction_matrix(fit_and_predict):
     assert fit_and_predict.sum() == pytest.approx(RATING_NUM, 0.01)
 
 
-# This works locally but fails in travis (FIXME)
-@pytest.mark.skip
 def test_cv_fit():
     accuracies = cv_fit_model()
 

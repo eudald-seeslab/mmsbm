@@ -1,22 +1,49 @@
 # Mixed Membership Stochastic Block Models
 
-[![Build Status](https://travis-ci.com/eudald-seeslab/mmsbm.svg?token=FgqRjRbiBxssKd9AcHMK&branch=main)](https://travis-ci.com/eudald-seeslab/mmsbm)
+[![PyPI version](https://badge.fury.io/py/mmsbm.svg)](https://badge.fury.io/py/mmsbm)
+[![Documentation Status](https://readthedocs.org/projects/mmsbm-docs/badge/?version=latest)](https://mmsbm-docs.readthedocs.io/en/latest/?badge=latest)
+[![Python Versions](https://img.shields.io/pypi/pyversions/mmsbm.svg)](https://pypi.org/project/mmsbm/)
+[![Tests](https://github.com/eudald-seeslab/mmsbm/actions/workflows/tests.yml/badge.svg)](https://github.com/eudald-seeslab/mmsbm/actions/workflows/tests.yml)
+[![Coverage Status](https://coveralls.io/repos/github/eudald-seeslab/mmsbm/badge.svg?branch=main)](https://coveralls.io/github/eudald-seeslab/mmsbm?branch=main)
+[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Downloads](https://pepy.tech/badge/mmsbm)](https://pepy.tech/project/mmsbm)
 
-This library converts [this](https://github.com/agodoylo/MMSBMrecommender) 
- work on Mixed Membership Stochastic Block Models to build a recommender 
-system [1] into a library to be used with more generic data.
+A Python implementation of Mixed Membership Stochastic Block Models for recommendation systems, based on the work by Godoy-Lorite et al. (2016). This library provides an efficient, vectorized implementation suitable for both research and production environments.
+
+## Freatures
+
+- Fast, vectorized implementation of MMSBM.
+- Support for both simple and cross-validated fitting.
+- Parallel processing for multiple sampling runs.
+- Comprehensive model statistics and evaluation metrics.
+- Compatible with Python 3.6+ through 3.12.
 
 ## Installation
 
-```
+```bash
 pip install mmsbm
 ```
 
-## Usage
+## Quick Start
 
-### Input data
+```python
+from mmsbm import MMSBM
 
-You'll need a pandas dataframe with exactly 3 columns: users, items and ratings, e.g.:
+# Create a model
+model = MMSBM(user_groups=2, item_groups=4)
+
+# Fit and predict
+model.fit(train_data)
+predictions = model.predict(test_data)
+
+# Get model results
+results = model.score()
+```
+## Detailed Usage
+
+### Data Format
+
+The input data should be a pandas DataFrame with exactly 3 columns representing users, items, and ratings:
 
 ```python
 import pandas as pd
@@ -40,88 +67,90 @@ test = pd.DataFrame(
 
 ```
 
-### Setup
+### Model Configuration
 
 ```python
 
 from mmsbm import MMSBM
 
 # Initialize the MMSBM class:
-mmsbm = MMSBM(
-    user_groups=2,
-    item_groups=4,
-    iterations=500,
-    sampling=5,
-    seed=1,
+model = MMSBM(
+    user_groups=2,      # Number of user groups
+    item_groups=4,      # Number of item groups
+    iterations=500,     # Number of EM iterations
+    sampling=5,         # Number of parallel runs
+    seed=1,             # Random seed for reproducibility
+    debug=False         # Enable debug logging
 )
 ```
 
-### Fit models
+### Training Methods
 
-In here you have two options, a simple fit where we run "sampling" times the fitting algorithm and return the results
-for all runs, you are then in charge of choosing the best one. 
+#### Simple Fit
 
 ```python
 mmsbm.fit(train)
 ```
 
-The other option is the cv_fit (cross-validated fit) function, whereby we split the input data in "folds" number of folds
-and run the fitting in each one and test on the excluded fold. We then return all the 
-samplings of the best performing model. The function returns a list of the accuracies for 
-each fold so that you can get confidence intervals on them.
+#### Cross-Validation Fit
 
 ```python
 accuracies = mmsbm.cv_fit(train, folds=5)
+print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
 ```
 
-### Prediction
-
-Once the model is fitted, we can predict on test data. The function predict returns
-the prediction matrix (the probability of each user to belong to each group) as a numpy array.
+### Making Predictions
 
 ```python
-pred_matrix = mmsbm.predict(test)
+predictions = mmsbm.predict(test)
 ```
 
-### Score
-
-Finally, you can get statistics about the goodness of fit and other parameters of the model, 
-as well as the computed objects: the theta matrix, the eta matrix and the probability distributions.
-
-The function score returns a dictionary with two sub-dictionaries, one for statistics about the model (called "stats") and 
-the other one with the computed objects (called "objects").
+### Model Evaluation
 
 ```python
-results = mmsbm.score()
+results = model.score()
+
+# Access various metrics
+accuracy = results['stats']['accuracy']
+mae = results['stats']['mae']
+
+# Access model parameters
+theta = results['objects']['theta']  # User group memberships
+eta = results['objects']['eta']      # Item group memberships
+pr = results['objects']['pr']        # Rating probabilities
 ```
 
-## Performance
+## Performance Considerations
 
-Each iteration takes a little about half a second in an Intel i7. This means that a
-500 iteration runs takes around 4 minutes. The computation is vectorized, so, as 
-long as you don't go crazy with the number of observations, the time should be 
-approximately the same regardless of training set size. It is also parallelized 
-over sampling, so, as long as you choose less sampling than number of cores, 
-you should have approximately the same performance  regardless of training set 
-size and sampling number.
+- Computation is vectorized for efficient processing of large datasets.
+- Parallel processing for multiple sampling runs
+- Computational complexity scales primarily with the number of unique items, but not users
+- Memory usage scales primarily with the number of unique users and items
 
-## Tests
+## Running Tests
 
 To run tests do the following:
 
 ```
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
 python -m pytest tests/*
 ```
 
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (git checkout -b feature/amazing-feature)
+3. Commit your changes (git commit -m 'Add amazing feature')
+4. Push to the branch (git push origin feature/amazing-feature)
+5. Open a Pull Request
 
 ## TODO
 
 - Progress bars are not working for jupyter notebooks.
 
-## Contributing
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
-
-Please make sure to update tests as appropriate.
 
 # References
 [1]: Godoy-Lorite, Antonia, et al. "Accurate and scalable social recommendation 
