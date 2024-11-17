@@ -193,7 +193,6 @@ class MMSBM:
                          self._dims['n_item_groups'],
                          self._dims['n_ratings']))
 
-        # Usar les arrays pre-allocades
         for idx, indices in enumerate(self._user_indices):
             n_theta[idx] = increments[indices].sum(axis=(0, -1))
 
@@ -208,7 +207,6 @@ class MMSBM:
     def run_one_sampling(self, data, seed, i):
         rng = np.random.default_rng(seed)
 
-        # Inicialitzacions amb l'objecte EM
         theta = self.em.normalize_with_d(
             rng.random((self.p + 1, self._dims['n_user_groups'])), 'user')
         eta = self.em.normalize_with_d(
