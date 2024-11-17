@@ -7,10 +7,11 @@ python:
   - "3.12"
 
 install:
-  - pip install .
+  - pip install -e ".[dev]"
+  - pip install coveralls pytest-cov
 
 script:
-  - python -m pytest tests/*
+  - pytest --cov=mmsbm --cov-report=xml tests/
 
 after_success:
-  bash <(curl -s https://codecov.io/bash)
+  - coveralls --service=travis-ci
