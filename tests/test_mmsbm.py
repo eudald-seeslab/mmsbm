@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from src.mmsbm import MMSBM
+from mmsbm import MMSBM
 
 
 RATING_NUM = 100
