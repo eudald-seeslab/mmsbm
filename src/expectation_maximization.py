@@ -45,27 +45,31 @@ class ExpectationMaximization:
         return self._omegas
 
     def update_coefficients(self, data, theta, eta, pr):
-        """Update coefficients using pre-computed indices"""
+        """Fully vectorized version"""
         omegas = self.compute_omegas(data, theta, eta, pr)
         sum_omega = np.zeros(self._dims['n_samples'])
         np.sum(omegas, axis=(1, 2), out=sum_omega)
 
         increments = np.divide(omegas, sum_omega[:, np.newaxis, np.newaxis])
 
-        n_theta = np.zeros((len(self._user_indices), self._dims['n_user_groups']))
-        n_eta = np.zeros((len(self._item_indices), self._dims['n_item_groups']))
-        n_pr = np.zeros((self._dims['n_user_groups'],
-                         self._dims['n_item_groups'],
-                         self._dims['n_ratings']))
+        # Create sparse matrices for user, item, and rating memberships
+        n_users = theta.shape[0]
+        n_items = eta.shape[0]
+        n_ratings = self._dims['n_ratings']
 
-        for idx, indices in enumerate(self._user_indices):
-            n_theta[idx] = increments[indices].sum(axis=(0, -1))
+        user_matrix = np.zeros((data.shape[0], n_users))
+        user_matrix[np.arange(data.shape[0]), data[:, 0]] = 1
 
-        for idx, indices in enumerate(self._item_indices):
-            n_eta[idx] = increments[indices].sum(axis=(0, 1))
+        item_matrix = np.zeros((data.shape[0], n_items))
+        item_matrix[np.arange(data.shape[0]), data[:, 1]] = 1
 
-        for idx, indices in enumerate(self._rating_indices):
-            n_pr[:, :, idx] = increments[indices].sum(axis=0)
+        rating_matrix = np.zeros((data.shape[0], n_ratings))
+        rating_matrix[np.arange(data.shape[0]), data[:, 2]] = 1
+
+        # Compute updates using matrix multiplication
+        n_theta = user_matrix.T @ increments.sum(axis=-1)
+        n_eta = item_matrix.T @ increments.sum(axis=1)
+        n_pr = np.tensordot(increments, rating_matrix, axes=([0], [0]))
 
         return n_theta, n_eta, n_pr
 
