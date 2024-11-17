@@ -1,6 +1,7 @@
 # Mixed Membership Stochastic Block Models
 
 [![Build Status](https://travis-ci.com/eudald-seeslab/mmsbm.svg?token=FgqRjRbiBxssKd9AcHMK&branch=main)](https://travis-ci.com/eudald-seeslab/mmsbm)
+[![Documentation Status](https://readthedocs.org/projects/mmsbm/badge/?version=latest)](https://mmsbm.readthedocs.io/en/latest/?badge=latest)
 
 A Python implementation of Mixed Membership Stochastic Block Models for recommendation systems, based on the work by Godoy-Lorite et al. (2016). This library provides an efficient, vectorized implementation suitable for both research and production environments.
 
