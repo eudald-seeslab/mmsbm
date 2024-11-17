@@ -117,8 +117,6 @@ python -m pytest tests/*
 ## TODO
 
 - Progress bars are not working for jupyter notebooks.
-- Include user_groups and item_groups optimization procedure.
-- The cv_fit test is not working on travis.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
