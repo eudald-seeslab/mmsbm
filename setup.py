@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="mmsbm",
-    version="0.2.2",
+    version="0.3.0",
     description="Compute Mixed Membership Stochastic Block Models.",
     py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers"],
     package_dir={"": "src"},
@@ -14,8 +14,7 @@ setup(
     author_email="eudald.correig@urv.cat",
     keywords=["bayesian analysis", "recommender systems", "network analysis", "python"],
     classifiers=[
-        "Development Status :: 3 - Alpha",
-        "Programming Language :: Python :: 3",
+        "Development Status :: 4 - Beta",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
