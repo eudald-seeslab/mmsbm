@@ -7,6 +7,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/eudald-seeslab/mmsbm/badge.svg?branch=main)](https://coveralls.io/github/eudald-seeslab/mmsbm?branch=main)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![Downloads](https://pepy.tech/badge/mmsbm)](https://pepy.tech/project/mmsbm)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15011623.svg)](https://doi.org/10.5281/zenodo.15011623)
 
 A Python implementation of Mixed Membership Stochastic Block Models for recommendation systems, based on the work by Godoy-Lorite et al. (2016). This library provides an efficient, vectorized implementation suitable for both research and production environments.
 
