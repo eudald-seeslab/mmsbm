@@ -1,5 +1,3 @@
-import numpy as np
-
 
 def _invert_dict(d):
     return {v: k for k, v in d.items()}

@@ -6,11 +6,10 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from data_handler import DataHandler
-from expectation_maximization import ExpectationMaximization
-from helpers import structure_folds, get_n_per_group
-
-from src.logger import setup_logger
+from .data_handler import DataHandler
+from .expectation_maximization import ExpectationMaximization
+from .helpers import structure_folds, get_n_per_group
+from .logger import setup_logger
 
 
 class MMSBM:

@@ -1,12 +1,14 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
-with open("README.md", "r") as fh:
+
+with open("README.md") as fh:
     long_description = fh.read()
 
 setup(
     name="mmsbm",
     version="0.3.3",
     description="Compute Mixed Membership Stochastic Block Models.",
+    packages=find_packages(where="src"),
     py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers"],
     package_dir={"": "src"},
     url="https://github.com/eudald-seeslab/mmsbm",
@@ -25,11 +27,11 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        "numpy ~= 2.0.1",
-        "pandas ~= 2.2.2",
-        "scikit-learn ~= 1.5.1",
-        "scipy ~= 1.14.0",
-        "tqdm ~= 4.66.0",
+        "numpy >= 2.0.1",
+        "pandas >= 2.2.2",
+        "scikit-learn >= 1.5.1",
+        "scipy >= 1.14.0",
+        "tqdm >= 4.66.0",
     ],
     extras_require={
         "dev": [
