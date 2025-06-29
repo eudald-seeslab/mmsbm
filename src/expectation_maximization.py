@@ -2,9 +2,41 @@
 
 import numpy as np
 
+# -----------------------------------------------------------------------------
+# Optional Numba acceleration
+# -----------------------------------------------------------------------------
+
+try:
+    from numba import njit, prange
+
+    @njit(parallel=True, fastmath=True)
+    def _compute_omegas_nb(data, theta, eta, pr):
+        """Numba-accelerated version of compute_omegas (CPU)."""
+        n = data.shape[0]
+        K = theta.shape[1]
+        L = eta.shape[1]
+
+        omegas = np.empty((n, K, L))
+
+        for idx in prange(n):
+            u = data[idx, 0]
+            i = data[idx, 1]
+            r = data[idx, 2]
+            for k in range(K):
+                for l in range(L):
+                    omegas[idx, k, l] = theta[u, k] * eta[i, l] * pr[k, l, r]
+
+        return omegas
+
+    NUMBA_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _compute_omegas_nb = None
+    NUMBA_AVAILABLE = False
+
 
 class ExpectationMaximization:
-    def __init__(self, dims, user_indices, item_indices, rating_indices, norm_factors):
+    def __init__(self, dims, user_indices, item_indices, rating_indices,
+                 norm_factors, backend: str = "auto"):
         """
         Initialize EM algorithm with pre-computed values
 
@@ -20,12 +52,23 @@ class ExpectationMaximization:
             Pre-computed rating indices for each rating
         norm_factors : dict
             Pre-computed normalization factors for users and items
+        backend : str, optional
+            Backend to use for computation ('numba' for Numba acceleration, 'numpy' for pure NumPy, or 'auto' to choose based on availability)
         """
         self._dims = dims
         self._user_indices = user_indices
         self._item_indices = item_indices
         self._rating_indices = rating_indices
         self._normalization_factors = norm_factors
+
+        # Decide backend: 'numba' if requested/available, else 'numpy'
+        if backend == "numba" and not NUMBA_AVAILABLE:
+            raise ImportError("Numba backend requested but numba is not installed.")
+
+        if backend == "numba" or (backend == "auto" and NUMBA_AVAILABLE):
+            self._backend = "numba"
+        else:
+            self._backend = "numpy"
 
         # Pre-allocate arrays for results
         self._omegas = np.zeros((dims['n_samples'],
@@ -67,8 +110,13 @@ class ExpectationMaximization:
         item_idx = data[:, 1]
         rating_idx = data[:, 2]
 
-        # Transpose rating tensor so ratings axis comes first: (R, K, L)
-        pr_T = pr.transpose(2, 0, 1)
+        # Fast path: Numba kernel when available/selected
+        if self._backend == "numba":
+            return _compute_omegas_nb(data, theta, eta, pr)
+
+        # ---------- NumPy fallback ----------
+
+        pr_T = pr.transpose(2, 0, 1)  # (R, K, L)
 
         self._omegas[:] = (
             theta[user_idx][:, :, None] *

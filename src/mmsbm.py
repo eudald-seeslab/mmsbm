@@ -40,6 +40,9 @@ class MMSBM:
     debug: int, default=False
         Make everything more verbose and set iterations to 10 and sampling to 1.
 
+    backend: str, default="auto"
+        The backend to use for ExpectationMaximization.
+
     Attributes
     ---------
     results: dictionary
@@ -66,6 +69,7 @@ class MMSBM:
         sampling=1,
         seed=None,
         debug=False,
+        backend="auto",
     ):
         self.start_time = datetime.now()
         self.user_groups = user_groups
@@ -73,6 +77,7 @@ class MMSBM:
         self.iterations = iterations
         self.sampling = sampling
         self.debug = debug
+        self.backend = backend
 
         # Initiate the general random state
         self.rng = np.random.default_rng(seed)
@@ -136,7 +141,8 @@ class MMSBM:
             user_indices=self._user_indices,
             item_indices=self._item_indices,
             rating_indices=self._rating_indices,
-            norm_factors=self._normalization_factors
+            norm_factors=self._normalization_factors,
+            backend=self.backend
         )
 
     def fit(self, data, silent=False):
