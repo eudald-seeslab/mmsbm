@@ -57,6 +57,9 @@ class DataHandler:
         df.iloc[:, 1] = [self.items_dict[str(a)] for a in df.iloc[:, 1]]
         df.iloc[:, 2] = [self.ratings_dict[str(a)] for a in df.iloc[:, 2]]
 
+        # Convert to int to guarantee correct dtype for numpy indexing
+        df = df.astype(int)
+
         return df.values
 
     @staticmethod

@@ -164,5 +164,20 @@ class ExpectationMaximization:
         )
 
     def compute_prod_dist(self, data, theta, eta, pr):
-        """Compute product distribution for all data points"""
-        return np.array([self.prod_dist(a, theta, eta, pr) for a in data])
+        """Vectorised computation of product distributions for all data points.
+
+        For each observation (u, i) we want:
+
+            p(r|u,i) = Σ_k Σ_ℓ θ_{uk} η_{iℓ} p_{kℓ}(r)
+
+        Using Einstein summation this becomes an efficient batched tensor
+        contraction without explicit Python loops.
+        """
+        user_idx = data[:, 0]
+        item_idx = data[:, 1]
+
+        theta_u = theta[user_idx]  # (N, K)
+        eta_i = eta[item_idx]      # (N, L)
+
+        # einsum: (N,K) , (N,L) , (K,L,R) -> (N,R)
+        return np.einsum('nk,nl,klr->nr', theta_u, eta_i, pr)
