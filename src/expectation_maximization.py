@@ -33,39 +33,82 @@ class ExpectationMaximization:
                                  dims['n_item_groups']))
 
     def compute_omegas(self, data, theta, eta, pr):
-        """Computes group responsibilities for each observation.
+        """Compute unnormalised responsibilities ω_{ui}(k,ℓ).
 
-        Args:
-            data: Array of shape (n_samples, 3) with [user_idx, item_idx, rating]
-            theta: User group memberships of shape (n_users, n_user_groups)
-            eta: Item group memberships of shape (n_items, n_item_groups)
-            pr: Rating probabilities of shape (n_user_groups, n_item_groups, n_ratings)
+        For every observation (u, i, r) in *data* we compute the joint
+        contribution of user-group *k* and item-group *ℓ*:
 
-        Returns:
-            Array of shape (n_samples, n_user_groups, n_item_groups) with ω values
+            ω_{ui}(k,ℓ) = θ_{uk} · η_{iℓ} · p_{kℓ}(r)
+
+        The array returned therefore has shape ``(N, K, L)`` where *N* is the
+        number of rows in *data*, *K* is the number of user groups and *L* the
+        number of item groups.
+
+        Parameters
+        ----------
+        data : ndarray of shape (N, 3)
+            Each row contains encoded ``[user_idx, item_idx, rating_idx]``.
+        theta : ndarray of shape (U, K)
+            Membership distribution of each user over user groups.
+        eta : ndarray of shape (I, L)
+            Membership distribution of each item over item groups.
+        pr : ndarray of shape (K, L, R)
+            Probability of each rating given a pair of latent groups.
+
+        Returns
+        -------
+        ndarray of shape (N, K, L)
+            Unnormalised responsibilities ω.  They do *not* yet sum to one
+            over all (k,ℓ) for a given (u,i) pair; that normalisation is
+            performed later in the M-step.
         """
 
-        user_indices = data[:, 0]
-        item_indices = data[:, 1]
-        rating_indices = data[:, 2]
+        user_idx = data[:, 0]
+        item_idx = data[:, 1]
+        rating_idx = data[:, 2]
 
-        self._omegas[:] = (theta[user_indices][:, :, np.newaxis] *
-                           eta[item_indices][:, np.newaxis, :] *
-                           np.moveaxis(pr[:, :, rating_indices], -1, 0))
+        # Transpose rating tensor so ratings axis comes first: (R, K, L)
+        pr_T = pr.transpose(2, 0, 1)
+
+        self._omegas[:] = (
+            theta[user_idx][:, :, None] *
+            eta[item_idx][:, None, :] *
+            pr_T[rating_idx]
+        )
 
         return self._omegas
 
     def update_coefficients(self, data, theta, eta, pr):
-        """Updates model parameters using scatter-add operations.
+        """M-step update of θ, η and p tensors.
 
-        Implements the MMSBM M-step equations (3-5):
+        Implements the MMSBM update equations:
 
             θ_{uk}      = Σ_i Σ_ℓ ω_{ui}(k,ℓ) / d_u
             η_{iℓ}      = Σ_u Σ_k ω_{ui}(k,ℓ) / d_i
             p_{kℓ}(r)   = Σ_{ui | r_{ui}=r} ω_{ui}(k,ℓ)
 
-        The required sums are accumulated directly with ``np.add.at`` to avoid
-        constructing large one-hot indicator matrices.
+        The accumulations are performed with scatter-add operations
+        (``numpy.add.at``) to avoid building dense one-hot indicator
+        matrices.
+
+        Parameters
+        ----------
+        data : ndarray of shape (N, 3)
+            Encoded observations ``[user_idx, item_idx, rating_idx]``.
+        theta : ndarray of shape (U, K)
+            Current estimate of user-group memberships.
+        eta : ndarray of shape (I, L)
+            Current estimate of item-group memberships.
+        pr : ndarray of shape (K, L, R)
+            Current estimate of rating probabilities.
+
+        Returns
+        -------
+        tuple(ndarray, ndarray, ndarray)
+            ``n_theta`` of shape (U, K), ``n_eta`` of shape (I, L) and
+            ``n_pr`` of shape (K, L, R) containing the *unnormalised* updated
+            numerators for each parameter.  They must be normalised by the
+            caller before the next EM iteration.
         """
 
         # --- E-step: compute responsibilities -----------------------------
