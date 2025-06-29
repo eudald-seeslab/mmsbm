@@ -56,46 +56,49 @@ class ExpectationMaximization:
         return self._omegas
 
     def update_coefficients(self, data, theta, eta, pr):
-        """Updates model parameters using fully vectorized operations.
+        """Updates model parameters using scatter-add operations.
 
-        Implements equations 3-5 from the paper:
-        θ_uk = Σ_i ω_ui(k,ℓ) / d_u
-        η_iℓ = Σ_u ω_ui(k,ℓ) / d_i
-        p_kℓ(r) = Σ_{ui|r_ui=r} ω_ui(k,ℓ) / Σ_ui ω_ui(k,ℓ)
+        Implements the MMSBM M-step equations (3-5):
 
-        Args:
-            data: Array of shape (n_samples, 3) with [user_idx, item_idx, rating]
-            theta: Current user memberships
-            eta: Current item memberships
-            pr: Ratings probabilities
+            θ_{uk}      = Σ_i Σ_ℓ ω_{ui}(k,ℓ) / d_u
+            η_{iℓ}      = Σ_u Σ_k ω_{ui}(k,ℓ) / d_i
+            p_{kℓ}(r)   = Σ_{ui | r_{ui}=r} ω_{ui}(k,ℓ)
 
-        Returns:
-            Tuple (theta, eta, prs) with updated parameters
+        The required sums are accumulated directly with ``np.add.at`` to avoid
+        constructing large one-hot indicator matrices.
         """
+
+        # --- E-step: compute responsibilities -----------------------------
         omegas = self.compute_omegas(data, theta, eta, pr)
-        sum_omega = np.zeros(self._dims['n_samples'])
-        np.sum(omegas, axis=(1, 2), out=sum_omega)
+        sum_omega = omegas.sum(axis=(1, 2))                     # (N,)
 
-        increments = np.divide(omegas, sum_omega[:, np.newaxis, np.newaxis])
+        eps = np.finfo(float).eps
+        increments = omegas / np.maximum(sum_omega, eps)[:, None, None]
 
-        # Create sparse matrices for user, item, and rating memberships
-        n_users = theta.shape[0]
-        n_items = eta.shape[0]
-        n_ratings = self._dims['n_ratings']
+        user_idx = data[:, 0]
+        item_idx = data[:, 1]
+        rating_idx = data[:, 2]
 
-        user_matrix = np.zeros((data.shape[0], n_users))
-        user_matrix[np.arange(data.shape[0]), data[:, 0]] = 1
+        K = self._dims['n_user_groups']
+        L = self._dims['n_item_groups']
+        R = self._dims['n_ratings']
 
-        item_matrix = np.zeros((data.shape[0], n_items))
-        item_matrix[np.arange(data.shape[0]), data[:, 1]] = 1
+        # --- θ update -----------------------------------------------------
+        inc_theta = increments.sum(axis=2)                      # (N, K)
+        n_theta = np.zeros((theta.shape[0], K))
+        np.add.at(n_theta, user_idx, inc_theta)
 
-        rating_matrix = np.zeros((data.shape[0], n_ratings))
-        rating_matrix[np.arange(data.shape[0]), data[:, 2]] = 1
+        # --- η update -----------------------------------------------------
+        inc_eta = increments.sum(axis=1)                        # (N, L)
+        n_eta = np.zeros((eta.shape[0], L))
+        np.add.at(n_eta, item_idx, inc_eta)
 
-        # Compute updates using matrix multiplication
-        n_theta = user_matrix.T @ increments.sum(axis=-1)
-        n_eta = item_matrix.T @ increments.sum(axis=1)
-        n_pr = np.tensordot(increments, rating_matrix, axes=([0], [0]))
+        # --- p update -----------------------------------------------------
+        n_pr = np.zeros((K, L, R))
+        for r in range(R):
+            mask = rating_idx == r
+            if np.any(mask):
+                n_pr[:, :, r] = increments[mask].sum(axis=0)
 
         return n_theta, n_eta, n_pr
 
