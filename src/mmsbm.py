@@ -449,34 +449,49 @@ class MMSBM:
         return stats
 
     def _compute_indicators(self, rat):
+        """Compute boolean/error indicators for evaluation in pure NumPy.
 
-        rat = pd.DataFrame(rat)
-        rat["pred"] = np.argmax(rat.values, axis=1)
-        rat['real'] = self.test[:, 2]
+        Parameters
+        ----------
+        rat : ndarray of shape (N, R)
+            Predicted rating probability distribution for each observation.
 
-        # Remove observations without predictions
-        rat = rat.loc[rat.iloc[:, : len(self.ratings)].sum(axis=1) != 0, :]
+        Returns
+        -------
+        dict of str -> ndarray
+            Arrays needed by _compute_final_stats.
+        """
 
-        # Check the ones we got right
-        rat["true"] = np.where(rat["pred"] == rat["real"], 1, 0)
+        # Predicted (most probable) rating index
+        pred = np.argmax(rat, axis=1)
+        real = self.test[:, 2]
 
-        # Check the ones we got almost right
-        rat["almost"] = np.where(abs(rat["pred"] - rat["real"]) <= 1, 1, 0)
+        # Filter observations without predictions (all-zero probability rows)
+        mask = rat.sum(axis=1) != 0
+        if not np.all(mask):
+            pred = pred[mask]
+            real = real[mask]
+            rat = rat[mask]
 
-        # squared error (which is not squared error but ok)
-        rat["s2"] = abs(rat["pred"] - rat["real"])
+        true = (pred == real).astype(int)
+        almost = (np.abs(pred - real) <= 1).astype(int)
+        s2 = np.abs(pred - real)
 
-        # Same but weighed
-        # Note that we are assuming that weights are the first R columns
-        rat["pred_pond"] = np.dot(rat.iloc[:, :len(self.ratings)].values, self.ratings)
-        rat["true_pond"] = np.where(rat["real"] == np.round(rat["pred_pond"]), 1, 0)
-        rat["s2pond"] = np.abs(rat["pred_pond"] - rat["real"])
+        # Weighted quantities using the actual probability distribution
+        pred_pond = rat @ self.ratings  # dot per row
+        true_pond = (real == np.round(pred_pond)).astype(int)
+        s2pond = np.abs(pred_pond - real)
 
-        return rat
+        return {
+            "true": true,
+            "almost": almost,
+            "s2": s2,
+            "true_pond": true_pond,
+            "s2pond": s2pond,
+        }
 
-    @staticmethod
-    def _compute_final_stats(rat):
-        n = rat.shape[0]
+    def _compute_final_stats(self, rat):
+        n = len(rat["true"])
 
         return {
             "accuracy": rat["true"].sum() / n,
