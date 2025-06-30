@@ -1,14 +1,20 @@
 import numpy as np
 
 try:
-    import cupy as cp
-    from cupyx import scatter_add
-    # Run a simple operation to verify the CUDA toolkit is functional
+    import cupy as cp  # noqa: F401 – optional dependency
+    from cupyx import scatter_add  # noqa: F401
+
+    # Run a trivial operation to verify that the CUDA runtime is functional
     _ = cp.arange(1)
-except (ImportError, cp.cuda.runtime.CUDARuntimeError):
-    # This error will be caught by the backend dispatcher, which will then
-    # fall back to the next available backend (numba or numpy).
-    raise ImportError("CuPy backend selected, but CuPy or a functional CUDA toolkit is not available.")
+
+except Exception as _cupy_err:  # pragma: no cover – handled by backend loader
+    # Any problem (missing package, missing CUDA driver, etc.) converts into a
+    # plain ImportError so that `backend.load_backend()` can gracefully fall
+    # back to a slower implementation.
+    raise ImportError(
+        "CuPy backend selected, but CuPy or a functional CUDA toolkit is not "
+        "available."
+    ) from _cupy_err
 
 __all__ = [
     "compute_omegas",
