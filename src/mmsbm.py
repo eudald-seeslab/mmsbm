@@ -142,7 +142,8 @@ class MMSBM:
             item_indices=self._item_indices,
             rating_indices=self._rating_indices,
             norm_factors=self._normalization_factors,
-            backend=self.backend
+            backend=self.backend,
+            debug=self.debug
         )
 
     def fit(self, data, silent=False):
