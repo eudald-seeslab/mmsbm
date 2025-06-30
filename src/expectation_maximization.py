@@ -1,42 +1,12 @@
 # expectation_maximization.py
 
+from backend import load_backend
 import numpy as np
-
-# -----------------------------------------------------------------------------
-# Optional Numba acceleration
-# -----------------------------------------------------------------------------
-
-try:
-    from numba import njit, prange
-
-    @njit(parallel=True, fastmath=True)
-    def _compute_omegas_nb(data, theta, eta, pr):
-        """Numba-accelerated version of compute_omegas (CPU)."""
-        n = data.shape[0]
-        K = theta.shape[1]
-        L = eta.shape[1]
-
-        omegas = np.empty((n, K, L))
-
-        for idx in prange(n):
-            u = data[idx, 0]
-            i = data[idx, 1]
-            r = data[idx, 2]
-            for k in range(K):
-                for l in range(L):
-                    omegas[idx, k, l] = theta[u, k] * eta[i, l] * pr[k, l, r]
-
-        return omegas
-
-    NUMBA_AVAILABLE = True
-except ImportError:  # pragma: no cover
-    _compute_omegas_nb = None
-    NUMBA_AVAILABLE = False
 
 
 class ExpectationMaximization:
     def __init__(self, dims, user_indices, item_indices, rating_indices,
-                 norm_factors, backend: str = "auto"):
+                 norm_factors, backend: str = "auto", debug: bool = False):
         """
         Initialize EM algorithm with pre-computed values
 
@@ -61,14 +31,14 @@ class ExpectationMaximization:
         self._rating_indices = rating_indices
         self._normalization_factors = norm_factors
 
-        # Decide backend: 'numba' if requested/available, else 'numpy'
-        if backend == "numba" and not NUMBA_AVAILABLE:
-            raise ImportError("Numba backend requested but numba is not installed.")
+        # Load computational kernels dynamically
+        (self._compute_omegas,
+         self._update_coeffs,
+         self._prod_dist,
+         self._backend) = load_backend(backend)
 
-        if backend == "numba" or (backend == "auto" and NUMBA_AVAILABLE):
-            self._backend = "numba"
-        else:
-            self._backend = "numpy"
+        if debug:
+            print(f"Using {self._backend} backend")
 
         # Pre-allocate arrays for results
         self._omegas = np.zeros((dims['n_samples'],
@@ -106,25 +76,8 @@ class ExpectationMaximization:
             performed later in the M-step.
         """
 
-        user_idx = data[:, 0]
-        item_idx = data[:, 1]
-        rating_idx = data[:, 2]
-
-        # Fast path: Numba kernel when available/selected
-        if self._backend == "numba":
-            return _compute_omegas_nb(data, theta, eta, pr)
-
-        # ---------- NumPy fallback ----------
-
-        pr_T = pr.transpose(2, 0, 1)  # (R, K, L)
-
-        self._omegas[:] = (
-            theta[user_idx][:, :, None] *
-            eta[item_idx][:, None, :] *
-            pr_T[rating_idx]
-        )
-
-        return self._omegas
+        # Delegate to selected backend kernel
+        return self._compute_omegas(data, theta, eta, pr)
 
     def update_coefficients(self, data, theta, eta, pr):
         """M-step update of θ, η and p tensors.
@@ -159,39 +112,7 @@ class ExpectationMaximization:
             caller before the next EM iteration.
         """
 
-        # --- E-step: compute responsibilities -----------------------------
-        omegas = self.compute_omegas(data, theta, eta, pr)
-        sum_omega = omegas.sum(axis=(1, 2))                     # (N,)
-
-        eps = np.finfo(float).eps
-        increments = omegas / np.maximum(sum_omega, eps)[:, None, None]
-
-        user_idx = data[:, 0]
-        item_idx = data[:, 1]
-        rating_idx = data[:, 2]
-
-        K = self._dims['n_user_groups']
-        L = self._dims['n_item_groups']
-        R = self._dims['n_ratings']
-
-        # --- θ update -----------------------------------------------------
-        inc_theta = increments.sum(axis=2)                      # (N, K)
-        n_theta = np.zeros((theta.shape[0], K))
-        np.add.at(n_theta, user_idx, inc_theta)
-
-        # --- η update -----------------------------------------------------
-        inc_eta = increments.sum(axis=1)                        # (N, L)
-        n_eta = np.zeros((eta.shape[0], L))
-        np.add.at(n_eta, item_idx, inc_eta)
-
-        # --- p update -----------------------------------------------------
-        n_pr = np.zeros((K, L, R))
-        for r in range(R):
-            mask = rating_idx == r
-            if np.any(mask):
-                n_pr[:, :, r] = increments[mask].sum(axis=0)
-
-        return n_theta, n_eta, n_pr
+        return self._update_coeffs(data, theta, eta, pr)
 
     def normalize_with_d(self, df, type_):
         # Normalize using pre-computed factors
@@ -264,11 +185,4 @@ class ExpectationMaximization:
         Using Einstein summation this becomes an efficient batched tensor
         contraction without explicit Python loops.
         """
-        user_idx = data[:, 0]
-        item_idx = data[:, 1]
-
-        theta_u = theta[user_idx]  # (N, K)
-        eta_i = eta[item_idx]      # (N, L)
-
-        # einsum: (N,K) , (N,L) , (K,L,R) -> (N,R)
-        return np.einsum('nk,nl,klr->nr', theta_u, eta_i, pr)
+        return self._prod_dist(data, theta, eta, pr)
