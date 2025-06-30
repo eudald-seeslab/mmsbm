@@ -30,6 +30,7 @@ class ExpectationMaximization:
         self._item_indices = item_indices
         self._rating_indices = rating_indices
         self._normalization_factors = norm_factors
+        self._debug = debug
 
         # Load computational kernels dynamically
         (self._compute_omegas,
@@ -38,6 +39,9 @@ class ExpectationMaximization:
          self._backend) = load_backend(backend)
 
         if debug:
+            print(f"Using {self._backend} backend")
+
+        if self._debug:
             print(f"Using {self._backend} backend")
 
         # Pre-allocate arrays for results
