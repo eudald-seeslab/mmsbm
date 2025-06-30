@@ -9,29 +9,71 @@
 [![Downloads](https://pepy.tech/badge/mmsbm)](https://pepy.tech/project/mmsbm)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15011623.svg)](https://doi.org/10.5281/zenodo.15011623)
 
-A Python implementation of Mixed Membership Stochastic Block Models for recommendation systems, based on the work by Godoy-Lorite et al. (2016). This library provides an efficient, vectorized implementation suitable for both research and production environments.
+A Python implementation of Mixed Membership Stochastic Block Models for recommendation systems, based on the work by Godoy-Lorite et al. (2016). This library provides an efficient, vectorized implementation with multiple computational backends suitable for both research and production environments.
 
-## Freatures
+## Features
 
+- **Multiple Backends**: Choose between `numpy` (default), `numba` (JIT-compiled CPU), and `cupy` (GPU-accelerated) for performance tuning.
 - Fast, vectorized implementation of MMSBM.
 - Support for both simple and cross-validated fitting.
 - Parallel processing for multiple sampling runs.
 - Comprehensive model statistics and evaluation metrics.
-- Compatible with Python 3.6+ through 3.12.
+- Compatible with Python 3.7+.
 
 ## Installation
 
+The base library can be installed with pip:
 ```bash
 pip install mmsbm
 ```
+
+For accelerated backends, you can install the optional dependencies:
+
+**Numba (JIT Compilation on CPU):**
+```bash
+pip install mmsbm[numba]
+```
+
+**CuPy (NVIDIA GPU Acceleration):**
+Make sure you have a compatible NVIDIA driver and CUDA toolkit installed. Then install with:
+```bash
+pip install mmsbm[cupy]
+```
+
+You can also install all optional dependencies with:
+```bash
+pip install mmsbm[numba,cupy]
+```
+
+## Performance & Backends
+
+This library uses a backend system to perform the core computations of the Expectation-Maximization algorithm. You can specify the backend when you initialize the model, giving you control over the performance characteristics.
+
+```python
+from mmsbm import MMSBM
+
+# Use the default, pure NumPy backend
+model_numpy = MMSBM(user_groups=2, item_groups=4, backend='numpy')
+
+# Use the Numba backend for JIT-compiled CPU acceleration
+model_numba = MMSBM(user_groups=2, item_groups=4, backend='numba')
+
+# Use the CuPy backend for GPU acceleration
+model_cupy = MMSBM(user_groups=2, item_groups=4, backend='cupy')
+```
+
+- **`numpy` (Default)**: A highly optimized, pure NumPy implementation. It is universally compatible and requires no extra dependencies beyond NumPy itself.
+- **`numba`**: Uses the Numba library to just-in-time (JIT) compile the core computational loops. This can provide a significant speedup on the CPU, especially for large datasets. It is recommended for users who want better performance without a dedicated GPU.
+- **`cupy`**: Offloads computations to a compatible NVIDIA GPU using the CuPy library. This provides the best performance but requires a CUDA-enabled GPU and the appropriate drivers. Note that there is some overhead for transferring data to and from the GPU, so it's most effective on larger models where the computation time outweighs the data transfer time. For small models, numba might actually be faster.
+
 
 ## Quick Start
 
 ```python
 from mmsbm import MMSBM
 
-# Create a model
-model = MMSBM(user_groups=2, item_groups=4)
+# Create a model with the desired backend
+model = MMSBM(user_groups=2, item_groups=4, backend='numba') # or 'numpy', 'cupy'
 
 # Fit and predict
 model.fit(train_data)
@@ -78,6 +120,7 @@ from mmsbm import MMSBM
 model = MMSBM(
     user_groups=2,      # Number of user groups
     item_groups=4,      # Number of item groups
+    backend='numba',    # Specify the computational backend
     iterations=500,     # Number of EM iterations
     sampling=5,         # Number of parallel runs
     seed=1,             # Random seed for reproducibility
@@ -90,20 +133,20 @@ model = MMSBM(
 #### Simple Fit
 
 ```python
-mmsbm.fit(train)
+model.fit(train)
 ```
 
 #### Cross-Validation Fit
 
 ```python
-accuracies = mmsbm.cv_fit(train, folds=5)
+accuracies = model.cv_fit(train, folds=5)
 print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
 ```
 
 ### Making Predictions
 
 ```python
-predictions = mmsbm.predict(test)
+predictions = model.predict(test)
 ```
 
 ### Model Evaluation
@@ -121,24 +164,14 @@ eta = results['objects']['eta']      # Item group memberships
 pr = results['objects']['pr']        # Rating probabilities
 ```
 
-## Performance Considerations
-
-- Computation is vectorized for efficient processing of large datasets.
-- Parallel processing for multiple sampling runs
-- Computational complexity scales primarily with the number of unique items, but not users
-- Memory usage scales primarily with the number of unique users and items
-
 ## Running Tests
 
 To run tests do the following:
 
 ```
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Run tests
-python -m pytest tests/*
+pytest
 ```
+
 
 ## Contributing
 
@@ -151,6 +184,7 @@ python -m pytest tests/*
 ## TODO
 
 - Progress bars are not working for jupyter notebooks.
+- There is a persistent (albeit harmless) warning when using the cupy backend.
 
 
 # References

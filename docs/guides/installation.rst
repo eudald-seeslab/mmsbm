@@ -1,24 +1,49 @@
 Installation Guide
 ================
 
+.. _installation:
+
 Requirements
-----------
+------------
 
 MMSBM requires:
 
-* Python >= 3.8
+* Python >= 3.7
 * NumPy
-* Pandas
 * tqdm
 
 Basic Installation
-----------------
+------------------
 
-The easiest way to install MMSBM is via pip::
+The easiest way to install the base ``mmsbm`` package is via pip::
 
     pip install mmsbm
 
-This will install MMSBM and all its dependencies.
+This will install the package with the default ``numpy`` backend.
+
+Installing Optional Backends
+----------------------------
+
+For enhanced performance, you can install optional dependencies for accelerated backends.
+
+Numba Backend (CPU JIT Compilation)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To enable the ``numba`` backend, install the Numba dependency::
+
+    pip install mmsbm[numba]
+
+
+CuPy Backend (GPU Acceleration)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To enable the ``cupy`` backend for NVIDIA GPUs, you first need a compatible CUDA toolkit installed on your system. Then, you can install the required dependency::
+
+    pip install mmsbm[cupy]
+
+You can also install all extras at once::
+
+    pip install mmsbm[numba,cupy]
 
 Development Installation
 ---------------------
