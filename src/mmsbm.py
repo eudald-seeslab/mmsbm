@@ -408,7 +408,12 @@ class MMSBM:
             test_indices = [
                 a
                 for a in temp.groupby(temp.columns[0], as_index=False)
-                .apply(get_n_per_group, n=items_per_fold, rng=self.rng)
+                .apply(
+                    get_n_per_group,
+                    n=items_per_fold,
+                    rng=self.rng,
+                    include_groups=False,
+                )
                 .values
             ]
             test_indices = [a for b in test_indices for a in b if str(a) != "0"]
