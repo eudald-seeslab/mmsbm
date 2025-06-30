@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover
 
 class ExpectationMaximization:
     def __init__(self, dims, user_indices, item_indices, rating_indices,
-                 norm_factors, backend: str = "auto"):
+                 norm_factors, backend: str = "auto", debug: bool = False):
         """
         Initialize EM algorithm with pre-computed values
 
@@ -60,6 +60,7 @@ class ExpectationMaximization:
         self._item_indices = item_indices
         self._rating_indices = rating_indices
         self._normalization_factors = norm_factors
+        self._debug = debug
 
         # Decide backend: 'numba' if requested/available, else 'numpy'
         if backend == "numba" and not NUMBA_AVAILABLE:
@@ -69,6 +70,9 @@ class ExpectationMaximization:
             self._backend = "numba"
         else:
             self._backend = "numpy"
+
+        if self._debug:
+            print(f"Using {self._backend} backend")
 
         # Pre-allocate arrays for results
         self._omegas = np.zeros((dims['n_samples'],
