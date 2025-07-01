@@ -90,20 +90,20 @@ model = MMSBM(
 #### Simple Fit
 
 ```python
-mmsbm.fit(train)
+model.fit(train)
 ```
 
 #### Cross-Validation Fit
 
 ```python
-accuracies = mmsbm.cv_fit(train, folds=5)
+accuracies = model.cv_fit(train, folds=5)
 print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
 ```
 
 ### Making Predictions
 
 ```python
-predictions = mmsbm.predict(test)
+predictions = model.predict(test)
 ```
 
 ### Model Evaluation
