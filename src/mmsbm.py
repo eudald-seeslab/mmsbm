@@ -169,6 +169,14 @@ class MMSBM:
         train = self.data_handler.format_train_data(data)
         self._prepare_objects(train)
 
+        # Ensure tqdm works nicely with multiprocessing
+        try:
+            from multiprocessing import RLock
+            tqdm.set_lock(RLock())
+        except Exception:
+            # If we cannot set the lock (e.g. on certain platforms), just continue
+            pass
+
         # Use 'spawn' for CUDA safety; otherwise, use default (fork)
         start_method = 'spawn' if self.em._backend == 'cupy' else None
         ctx = multiprocessing.get_context(start_method)
@@ -224,7 +232,15 @@ class MMSBM:
                         self._dims['n_item_groups'],
                         self._dims['n_ratings'])))
 
-        for j in tqdm(range(self.iterations)):
+        # Configure tqdm to avoid overlapping bars when using multiprocessing
+        tqdm_kwargs = {
+            "position": i,
+            "leave": False,
+            "ascii": False,
+            "disable": False,
+        }
+
+        for j in tqdm(range(self.iterations), **tqdm_kwargs):
             n_theta, n_eta, npr = self.em.update_coefficients(
                 data=data, theta=theta, eta=eta, pr=pr
             )
