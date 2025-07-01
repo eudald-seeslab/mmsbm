@@ -8,7 +8,7 @@ setup(
     version="1.0.0",
     description="Compute Mixed Membership Stochastic Block Models.",
     py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers", "backend",
-                "kernels_numpy", "kernels_numba", "kernels_cupy"],
+                "logger", "kernels_numpy", "kernels_numba", "kernels_cupy"],
     package_dir={"": "src"},
     url="https://github.com/eudald-seeslab/mmsbm",
     author="Eudald Correig",
