@@ -38,9 +38,6 @@ class ExpectationMaximization:
          self._prod_dist,
          self._backend) = load_backend(backend)
 
-        if debug:
-            print(f"Using {self._backend} backend")
-
         if self._debug:
             print(f"Using {self._backend} backend")
 
