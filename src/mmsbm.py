@@ -3,7 +3,6 @@ from datetime import datetime
 from itertools import repeat
 
 import numpy as np
-import pandas as pd
 from tqdm.auto import tqdm
 
 from data_handler import DataHandler
@@ -170,7 +169,11 @@ class MMSBM:
         train = self.data_handler.format_train_data(data)
         self._prepare_objects(train)
 
-        with multiprocessing.Pool(processes=self.sampling) as pool:
+        # Use 'spawn' for CUDA safety; otherwise, use default (fork)
+        start_method = 'spawn' if self.em._backend == 'cupy' else None
+        ctx = multiprocessing.get_context(start_method)
+
+        with ctx.Pool(processes=self.sampling) as pool:
             self.results = pool.starmap(self.run_one_sampling, zip(repeat(train), self.child_states, list(range(self.sampling))))
 
     def run_one_sampling(self, data, seed, i):
@@ -235,6 +238,12 @@ class MMSBM:
                 self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
 
         likelihood = self.em.compute_likelihood(self.train, theta, eta, pr)
+
+        # If using GPU, explicitly free memory in the worker process before returning
+        if self.em._backend == 'cupy':
+            import cupy as cp
+            cp.cuda.Device().synchronize()
+            cp.get_default_memory_pool().free_all_blocks()
 
         return {
             "likelihood": likelihood,
@@ -399,7 +408,12 @@ class MMSBM:
             test_indices = [
                 a
                 for a in temp.groupby(temp.columns[0], as_index=False)
-                .apply(get_n_per_group, n=items_per_fold, rng=self.rng)
+                .apply(
+                    get_n_per_group,
+                    n=items_per_fold,
+                    rng=self.rng,
+                    include_groups=False,
+                )
                 .values
             ]
             test_indices = [a for b in test_indices for a in b if str(a) != "0"]

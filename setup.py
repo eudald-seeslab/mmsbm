@@ -5,9 +5,10 @@ with open("README.md", "r") as fh:
 
 setup(
     name="mmsbm",
-    version="0.4.2",
+    version="1.0.0",
     description="Compute Mixed Membership Stochastic Block Models.",
-    py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers", "logger"],
+    py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers", "backend",
+                "logger", "kernels_numpy", "kernels_numba", "kernels_cupy"],
     package_dir={"": "src"},
     url="https://github.com/eudald-seeslab/mmsbm",
     author="Eudald Correig",
@@ -25,11 +26,9 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=[
-        "numpy ~= 2.0.1",
-        "pandas ~= 2.2.2",
-        "scikit-learn ~= 1.5.1",
-        "scipy ~= 1.14.0",
-        "tqdm ~= 4.66.0",
+        "numpy",
+        "pandas",
+        "tqdm",
     ],
     extras_require={
         "dev": [
@@ -37,5 +36,7 @@ setup(
             'pytest-cov',
             'coveralls',
         ],
+        "numba": ["numba"],
+        "cupy": ["cupy-cuda12x"],
     },
 )
