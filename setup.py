@@ -5,9 +5,9 @@ with open("README.md", "r") as fh:
 
 setup(
     name="mmsbm",
-    version="0.4.0",
+    version="0.4.1",
     description="Compute Mixed Membership Stochastic Block Models.",
-    py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers"],
+    py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers", "logger"],
     package_dir={"": "src"},
     url="https://github.com/eudald-seeslab/mmsbm",
     author="Eudald Correig",
