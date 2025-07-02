@@ -63,8 +63,10 @@ model_cupy = MMSBM(user_groups=2, item_groups=4, backend='cupy')
 ```
 
 - **`numpy` (Default)**: A highly optimized, pure NumPy implementation. It is universally compatible and requires no extra dependencies beyond NumPy itself.
-- **`numba`**: Uses the Numba library to just-in-time (JIT) compile the core computational loops. This can provide a significant speedup on the CPU, especially for large datasets. It is recommended for users who want better performance without a dedicated GPU.
+- **`numba`**: Uses the Numba library to just-in-time (JIT) compile the core computational loops. This can provide a significant speedup on the CPU, especially for large datasets. It is recommended for users who want better performance without a dedicated GPU. Note that there is some issue with the parallelization of samples which makes numba slower for smaller datasets.
 - **`cupy`**: Offloads computations to a compatible NVIDIA GPU using the CuPy library. This provides the best performance but requires a CUDA-enabled GPU and the appropriate drivers. Note that there is some overhead for transferring data to and from the GPU, so it's most effective on larger models where the computation time outweighs the data transfer time.
+
+> **Note**: There are some issues with numba parallelization and cupy data transfer to the GPU which don't guarantee they will be superior to Numpy. Please try different backends to find the best one for your data and your system.
 
 
 ## Usage
