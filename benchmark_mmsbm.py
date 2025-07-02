@@ -67,7 +67,7 @@ def main():
     pred_time = time.perf_counter() - t1
 
     print(
-        f"Training time:   {train_time:8.3f} s\n"
+        f" Training time:   {train_time:8.3f} s\n"
         f"Prediction time: {pred_time:8.3f} s\n"
         f"Total time:      {train_time + pred_time:8.3f} s"
     )
