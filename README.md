@@ -64,29 +64,14 @@ model_cupy = MMSBM(user_groups=2, item_groups=4, backend='cupy')
 
 - **`numpy` (Default)**: A highly optimized, pure NumPy implementation. It is universally compatible and requires no extra dependencies beyond NumPy itself.
 - **`numba`**: Uses the Numba library to just-in-time (JIT) compile the core computational loops. This can provide a significant speedup on the CPU, especially for large datasets. It is recommended for users who want better performance without a dedicated GPU.
-- **`cupy`**: Offloads computations to a compatible NVIDIA GPU using the CuPy library. This provides the best performance but requires a CUDA-enabled GPU and the appropriate drivers. Note that there is some overhead for transferring data to and from the GPU, so it's most effective on larger models where the computation time outweighs the data transfer time. For small models, numba might actually be faster.
+- **`cupy`**: Offloads computations to a compatible NVIDIA GPU using the CuPy library. This provides the best performance but requires a CUDA-enabled GPU and the appropriate drivers. Note that there is some overhead for transferring data to and from the GPU, so it's most effective on larger models where the computation time outweighs the data transfer time.
 
 
-## Quick Start
-
-```python
-from mmsbm import MMSBM
-
-# Create a model with the desired backend
-model = MMSBM(user_groups=2, item_groups=4, backend='numba') # or 'numpy', 'cupy'
-
-# Fit and predict
-model.fit(train_data)
-predictions = model.predict(test_data)
-
-# Get model results
-results = model.score()
-```
-## Detailed Usage
+## Usage
 
 ### Data Format
 
-The input data should be a pandas DataFrame with exactly 3 columns representing users, items, and ratings:
+The input data should be a pandas DataFrame with exactly 3 columns calles _users_, _items_, and _ratings_. For example:
 
 ```python
 import pandas as pd
@@ -120,15 +105,24 @@ from mmsbm import MMSBM
 model = MMSBM(
     user_groups=2,      # Number of user groups
     item_groups=4,      # Number of item groups
-    backend='numba',    # Specify the computational backend
+    backend='numba',    # Specify the computational backend (numpy, numba, or cupy)
     iterations=500,     # Number of EM iterations
-    sampling=5,         # Number of parallel runs
+    sampling=5,         # Number of parallel EM runs (different random initializations); the best run is kept
     seed=1,             # Random seed for reproducibility
     debug=False         # Enable debug logging
 )
 ```
 
+> **Note on `sampling`**  
+> Setting `sampling` to a value greater than 1 makes the library launch that many independent EM optimizations in parallel, each starting from a different random initialization. Once all runs finish, the one with the highest log-likelihood is selected. This increases the chances of finding a better (global) solution at the cost of extra computation time.
+
+
 ### Training Methods
+
+The library offers two complementary ways to train a model:
+
+* **Simple Fit** – runs the EM algorithm once on the full training set. This is the fastest option and is appropriate when you already have a train-test split (or when you do not need a validation step).
+* **Cross-Validation Fit** – automatically splits the input data into *k* folds (default 5), trains a separate model on each *(k-1)* subset, and evaluates it on the held-out fold. The routine returns the accuracy of every fold so you can inspect the variability and pick hyper-parameters more reliably. It is slower because it performs the fit *k* times but provides an unbiased estimate of generalisation performance.
 
 #### Simple Fit
 
@@ -151,6 +145,8 @@ predictions = model.predict(test)
 
 ### Model Evaluation
 
+> **Note**: you need to predict before running model.score().
+
 ```python
 results = model.score()
 
@@ -172,7 +168,6 @@ To run tests do the following:
 pytest
 ```
 
-
 ## Contributing
 
 1. Fork the repository
@@ -185,9 +180,10 @@ pytest
 
 - Progress bars are not working for jupyter notebooks.
 - There is a persistent (albeit harmless) warning when using the cupy backend.
+- Numba and cupy backends show unexpected behaviour on the "sampling" parallelization.
+- Improve the treatment of the prediction / score steps and the results object
+- Add sampling as an extra axis in the EM objects for more efficiency
 
 
 # References
-[1]: Godoy-Lorite, Antonia, et al. "Accurate and scalable social recommendation 
-using mixed-membership stochastic block models." Proceedings of the National 
-Academy of Sciences 113.50 (2016): 14207-14212.
+[1]: Godoy-Lorite, Antonia, et al. "Accurate and scalable social recommendation using mixed-membership stochastic block models." Proceedings of the National Academy of Sciences 113.50 (2016): 14207-14212.
