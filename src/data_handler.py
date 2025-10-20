@@ -99,18 +99,24 @@ class DataHandler:
         return self.parse_train_data(data)
 
     def _check_test_in_train(self, data):
-        test_users = set([str(a) for a in data.iloc[:, 0]])
-        train_users = set(self.obs_dict.keys())
+        logger = logging.getLogger("MMSBM")
 
-        dif = test_users.difference(train_users)
-        if len(dif):
-            logger = logging.getLogger("MMSBM")
-            logger.warning(
-                f"The observations {', '.join([str(i) for i in dif])} are in the test set but weren't in "
-                f"the train set so I'll remove them."
-            )
+        col_to_train_dict = {
+            "users": self.obs_dict,
+            "items": self.items_dict,
+            "ratings": self.ratings_dict,
+        }
 
-            data = data[~data.iloc[:, 0].isin([a for a in dif])]
+        for column, train_dict in col_to_train_dict.items():
+            test_values = set(str(a) for a in data.loc[:, column])
+            train_values = set(train_dict.keys())
+            dif_values = test_values.difference(train_values)
+            if len(dif_values):
+                logger.warning(
+                    f"The {column} {', '.join(str(a) for a in dif_values)} are in the test set but weren't in "
+                    f"the train set so I'll remove them."
+                )
+                data = data[~data.loc[:, column].isin(dif_values)]
 
         return data
 
