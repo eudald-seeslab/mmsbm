@@ -59,3 +59,32 @@ def test_backend_prod_dist_matches_numpy(backend_name):
     dist_back = prod_backend(data, theta, eta, pr)
 
     assert np.allclose(dist_np, dist_back, atol=1e-8) 
+
+
+@pytest.mark.parametrize("backend_name", ["numba", "cupy"])
+def test_backend_update_coefficients_matches_numpy(backend_name):
+    """Ensure unnormalised M-step updates match NumPy reference."""
+    try:
+        _, update_backend, _, _ = load_backend(backend_name)
+    except Exception:
+        pytest.skip(f"{backend_name} backend not available in this environment")
+
+    _, update_numpy, _, _ = load_backend("numpy")
+
+    rng = np.random.default_rng(2)
+    data = np.array([[0, 0, 0], [1, 1, 1], [0, 1, 2]], dtype=np.int64)
+    theta = rng.random((2, 2))
+    eta = rng.random((2, 2))
+    pr = rng.random((2, 2, 3))
+
+    # Normalise to valid probability tensors
+    theta /= theta.sum(axis=1, keepdims=True)
+    eta /= eta.sum(axis=1, keepdims=True)
+    pr /= pr.sum(axis=2, keepdims=True)
+
+    n_theta_np, n_eta_np, n_pr_np = update_numpy(data, theta, eta, pr)
+    n_theta_b, n_eta_b, n_pr_b = update_backend(data, theta, eta, pr)
+
+    assert np.allclose(n_theta_np, n_theta_b, atol=1e-8)
+    assert np.allclose(n_eta_np, n_eta_b, atol=1e-8)
+    assert np.allclose(n_pr_np, n_pr_b, atol=1e-8)

@@ -4,6 +4,7 @@ import numpy as np
 
 from mmsbm import MMSBM
 from data_handler import DataHandler
+from expectation_maximization import ExpectationMaximization
 
 
 RATING_NUM = 100
@@ -191,3 +192,22 @@ def test_score_with_logging():
 
     assert {"stats", "objects"} == set(res.keys())
     assert "accuracy" in res["stats"]
+
+
+def test_normalize_with_self_handles_zero_rows():
+    """normalize_with_self should be robust to zero-sum rows."""
+    arr = np.array(
+        [
+            [[0.0, 0.0], [1.0, 1.0]],  # mixed non-zero row
+            [[0.0, 0.0], [0.0, 0.0]],  # all zeros
+        ]
+    )
+
+    normed = ExpectationMaximization.normalize_with_self(arr.copy())
+
+    # Mixed block: second row should normalise to 1, zero row stays zero
+    assert np.allclose(normed[0][1].sum(), 1.0)
+    assert np.all(normed[0][0] == 0)
+    # Zero block should remain zeros without NaNs
+    assert np.all(normed[1] == 0)
+    assert np.isfinite(normed).all()
