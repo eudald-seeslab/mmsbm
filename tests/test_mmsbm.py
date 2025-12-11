@@ -183,6 +183,31 @@ def test_run_one_sampling_executes_and_returns_expected_keys():
     )
 
 
+def test_normalization_factors_align_with_indices():
+    """Normalization factors should align to user/item indices, not dict order."""
+    data_df = pd.DataFrame(
+        {
+            "users": ["u2", "u0", "u1", "u2"],
+            "items": ["i1", "i0", "i1", "i2"],
+            "ratings": ["1", "1", "2", "3"],
+        }
+    )
+
+    mm = MMSBM(2, 3, iterations=1, sampling=1, seed=0, backend="numpy")
+    dh = DataHandler()
+    train = dh.format_train_data(data_df)
+    mm._prepare_objects(train)
+
+    user_counts = np.bincount(train[:, 0], minlength=mm.p + 1)
+    item_counts = np.bincount(train[:, 1], minlength=mm.m + 1)
+
+    expected_user = np.repeat(np.maximum(user_counts, 1)[:, None], mm.user_groups, axis=1)
+    expected_item = np.repeat(np.maximum(item_counts, 1)[:, None], mm.item_groups, axis=1)
+
+    assert np.array_equal(mm._normalization_factors["user"], expected_user)
+    assert np.array_equal(mm._normalization_factors["item"], expected_item)
+
+
 def test_score_with_logging():
     """Ensure the logging branch (`silent=False`) executes without errors."""
     mm = MMSBM(2, 2, iterations=1, sampling=1, seed=3, backend="numpy")

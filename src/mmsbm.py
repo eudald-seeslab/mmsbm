@@ -50,16 +50,6 @@ class MMSBM:
 
     """
 
-    data_handler = None
-    results = None
-    test = None
-    theta = None
-    eta = None
-    pr = None
-    likelihood = None
-    prediction_matrix = None
-    rng = None
-
     def __init__(
         self,
         user_groups,
@@ -86,6 +76,14 @@ class MMSBM:
 
         self.logger = setup_logger("MMSBM")
 
+        self.data_handler = None
+        self.results = None
+        self.test = None
+        self.theta = None
+        self.eta = None
+        self.pr = None
+        self.likelihood = None
+        self.prediction_matrix = None
         self._normalization_factors = None
         self._user_indices = None
         self._item_indices = None
@@ -97,17 +95,14 @@ class MMSBM:
         self.p = int(train[:, 0].max())
         self.m = int(train[:, 1].max())
 
-        self.d0 = {a: list(train[train[:, 0] == a, 1]) for a in set(train[:, 0])}
-        self.d1 = {a: list(train[train[:, 1] == a, 0]) for a in set(train[:, 1])}
-
         self.train = train
 
-        # Pre-compute normalization factors
+        # Pre-compute normalization factors aligned by index
+        user_counts = np.bincount(train[:, 0].astype(int), minlength=self.p + 1)
+        item_counts = np.bincount(train[:, 1].astype(int), minlength=self.m + 1)
         self._normalization_factors = {
-            'user': np.array([np.repeat(max(len(a), 1), self.user_groups)
-                              for a in self.d0.values()]),
-            'item': np.array([np.repeat(max(len(a), 1), self.item_groups)
-                              for a in self.d1.values()])
+            'user': np.repeat(np.maximum(user_counts, 1)[:, np.newaxis], self.user_groups, axis=1),
+            'item': np.repeat(np.maximum(item_counts, 1)[:, np.newaxis], self.item_groups, axis=1)
         }
 
         # Pre-compute indices for update_coefficients

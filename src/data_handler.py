@@ -8,12 +8,10 @@ pd.options.mode.chained_assignment = None
 
 
 class DataHandler:
-    obs_dict = None
-    items_dict = None
-    ratings_dict = None
-
     def __init__(self):
-        pass
+        self.obs_dict = None
+        self.items_dict = None
+        self.ratings_dict = None
 
     @staticmethod
     def _get_data(path_):
