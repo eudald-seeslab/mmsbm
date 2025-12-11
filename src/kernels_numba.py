@@ -1,3 +1,9 @@
+import sys
+
+# Numba backend unsupported on Windows (native llvmlite/Numba crashes).
+if sys.platform.startswith(("win", "cygwin")):
+    raise ImportError("Numba backend is not supported on Windows.")
+
 from numba import njit, prange
 import numpy as np
 
@@ -37,21 +43,18 @@ def compute_omegas(data, theta, eta, pr):
     return omegas
 
 
-@njit
-def _sum_axis_1_2(arr):
-    """Helper to compute arr.sum(axis=(1, 2)) for older Numba versions."""
-    n_rows = arr.shape[0]
-    out = np.empty(n_rows, dtype=arr.dtype)
-    for i in range(n_rows):
-        out[i] = arr[i, :, :].sum()
-    return out
-
-
 @njit(fastmath=True)
 def update_coefficients(data, theta, eta, pr):
     """Serial Numba version of update_coefficients."""
     omegas = compute_omegas(data, theta, eta, pr)
-    sum_omega = _sum_axis_1_2(omegas)
+
+    n_samples = data.shape[0]
+    K = theta.shape[1]
+    L = eta.shape[1]
+    R = pr.shape[2]
+
+    # Sum ω over (k,l) using NumPy reduction inside njit
+    sum_omega = omegas.sum(axis=(1, 2))
 
     # Avoid division by zero
     eps = np.finfo(np.float64).eps
@@ -61,31 +64,18 @@ def update_coefficients(data, theta, eta, pr):
     n_eta = np.zeros_like(eta)
     n_pr = np.zeros_like(pr)
 
-    K, L, R = pr.shape
+    for idx in range(n_samples):
+        u = data[idx, 0]
+        i = data[idx, 1]
+        r = data[idx, 2]
 
-    # This loop is serial; prange is not safe here without atomic operations
-    # Accumulate theta/eta and a rating-summed tensor for pr
-    n_pr_rkl = np.zeros((R, K, L))
-
-    for idx in range(data.shape[0]):
-        u, i, r = data[idx, 0], data[idx, 1], data[idx, 2]
-
-        # Update theta for user u (sum over l)
-        for k in range(K):
-            n_theta[u, k] += np.sum(increments[idx, k, :])
-
-        # Update eta for item i (sum over k)
-        for l in range(L):
-            n_eta[i, l] += np.sum(increments[idx, :, l])
-
-        # Update pr for rating r with whole (K,L) slice
-        n_pr_rkl[r] += increments[idx]
-
-    # Move back to K,L,R layout
-    for r in range(R):
-        for k in range(K):
-            for l in range(L):
-                n_pr[k, l, r] = n_pr_rkl[r, k, l]
+        inc = increments[idx]
+        # θ: sum over l
+        n_theta[u] += inc.sum(axis=1)
+        # η: sum over k
+        n_eta[i] += inc.sum(axis=0)
+        # p: accumulate full K×L slice for rating r
+        n_pr[:, :, r] += inc
 
     return n_theta, n_eta, n_pr
 

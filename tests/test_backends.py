@@ -1,10 +1,19 @@
+import sys
 import numpy as np
 import pytest
 
 from backend import load_backend
 
 
-@pytest.mark.parametrize("backend_name", ["numba", "cupy"])
+if sys.platform.startswith("linux"):
+    _BACKENDS = ["numba", "cupy"]
+elif sys.platform.startswith(("win", "cygwin")):
+    _BACKENDS = []  # Numba/CuPy no suportats en Windows en aquesta lib
+else:
+    _BACKENDS = ["numba"]
+
+
+@pytest.mark.parametrize("backend_name", _BACKENDS)
 def test_backend_compute_omegas_matches_numpy(backend_name):
     """Ensure alternative backends return the same omega tensor as NumPy implementation.
 
@@ -35,7 +44,7 @@ def test_backend_compute_omegas_matches_numpy(backend_name):
     assert np.allclose(out_numpy, out_backend, atol=1e-8)
 
 
-@pytest.mark.parametrize("backend_name", ["numba", "cupy"])
+@pytest.mark.parametrize("backend_name", _BACKENDS)
 def test_backend_prod_dist_matches_numpy(backend_name):
     """Ensure prod_dist contract matches NumPy reference."""
     try:
@@ -61,7 +70,7 @@ def test_backend_prod_dist_matches_numpy(backend_name):
     assert np.allclose(dist_np, dist_back, atol=1e-8) 
 
 
-@pytest.mark.parametrize("backend_name", ["numba", "cupy"])
+@pytest.mark.parametrize("backend_name", _BACKENDS)
 def test_backend_update_coefficients_matches_numpy(backend_name):
     """Ensure unnormalised M-step updates match NumPy reference."""
     try:

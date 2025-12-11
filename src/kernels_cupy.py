@@ -1,4 +1,10 @@
+import sys
 import numpy as np
+
+# CuPy wheels are only supported on Linux. On Windows or macOS we fail fast
+# so the backend can fall back to Numba/Numpy without CUDA warnings.
+if sys.platform.startswith(("win", "cygwin", "darwin")):
+    raise ImportError("CuPy backend només està suportat en Linux.")
 
 try:
     import cupy as cp  # noqa: F401 – optional dependency
@@ -12,8 +18,8 @@ except Exception as _cupy_err:  # pragma: no cover – handled by backend loader
     # plain ImportError so that `backend.load_backend()` can gracefully fall
     # back to a slower implementation.
     raise ImportError(
-        "CuPy backend selected, but CuPy or a functional CUDA toolkit is not "
-        "available."
+        "CuPy backend seleccionat, però CuPy o un runtime CUDA funcional no "
+        "estan disponibles."
     ) from _cupy_err
 
 __all__ = [
