@@ -70,11 +70,10 @@ def update_coefficients(data: np.ndarray,
     np.add.at(n_eta, item_idx, inc_eta)
 
     # p update ---------------------------------------------------------------
-    n_pr = np.zeros_like(pr)
-    for r in range(R):
-        mask = rating_idx == r
-        if np.any(mask):
-            n_pr[:, :, r] = increments[mask].sum(axis=0)
+    # Accumulate per-rating in one vectorised add.at over rating axis
+    n_pr_rkl = np.zeros((R, K, L), dtype=pr.dtype)
+    np.add.at(n_pr_rkl, rating_idx, increments)
+    n_pr = np.transpose(n_pr_rkl, (1, 2, 0))
 
     return n_theta, n_eta, n_pr
 

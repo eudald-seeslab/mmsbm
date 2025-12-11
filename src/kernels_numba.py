@@ -64,6 +64,9 @@ def update_coefficients(data, theta, eta, pr):
     K, L, R = pr.shape
 
     # This loop is serial; prange is not safe here without atomic operations
+    # Accumulate theta/eta and a rating-summed tensor for pr
+    n_pr_rkl = np.zeros((R, K, L))
+
     for idx in range(data.shape[0]):
         u, i, r = data[idx, 0], data[idx, 1], data[idx, 2]
 
@@ -75,11 +78,14 @@ def update_coefficients(data, theta, eta, pr):
         for l in range(L):
             n_eta[i, l] += np.sum(increments[idx, :, l])
 
-        # Update pr for rating r (no sum needed, just add increments)
+        # Update pr for rating r with whole (K,L) slice
+        n_pr_rkl[r] += increments[idx]
+
+    # Move back to K,L,R layout
+    for r in range(R):
         for k in range(K):
             for l in range(L):
-                # .item() is crucial to convert 0-d array to scalar for Numba
-                n_pr[k, l, r] += increments[idx, k, l].item()
+                n_pr[k, l, r] = n_pr_rkl[r, k, l]
 
     return n_theta, n_eta, n_pr
 

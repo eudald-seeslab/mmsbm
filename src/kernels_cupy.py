@@ -84,10 +84,9 @@ def update_coefficients(data, theta, eta, pr):
 
     # Pr update
     K, L, R = n_pr.shape
-    for r in range(R):
-        mask = (rating_idx == r)
-        if mask.any():
-            n_pr[:, :, r] = increments[mask].sum(axis=0)
+    n_pr_rkl = cp.zeros((R, K, L), dtype=pr_cp.dtype)
+    cp.add.at(n_pr_rkl, rating_idx, increments)
+    n_pr = cp.transpose(n_pr_rkl, (1, 2, 0))
 
     # Move results back to CPU
     return cp.asnumpy(n_theta), cp.asnumpy(n_eta), cp.asnumpy(n_pr)
