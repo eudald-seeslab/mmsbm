@@ -4,8 +4,10 @@ def setup_logger(name, log_file="mmsbm.log", level=logging.INFO):
     """Configure or refresh a named logger each time this is called."""
     logger = logging.getLogger(name)
     logger.setLevel(level)
-    # Clear existing handlers to avoid duplicates
-    logger.handlers.clear()
+    # Close and remove existing handlers to avoid duplicates and leaks
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
 
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 
