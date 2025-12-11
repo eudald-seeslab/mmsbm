@@ -1,4 +1,5 @@
 import multiprocessing
+import os
 from datetime import datetime
 from itertools import repeat
 
@@ -169,15 +170,28 @@ class MMSBM:
             from multiprocessing import RLock
             tqdm.set_lock(RLock())
         except Exception:
-            # If we cannot set the lock (e.g. on certain platforms), just continue
             pass
 
-        # Use 'spawn' for CUDA safety; otherwise, use default (fork)
-        start_method = 'spawn' if self.em._backend == 'cupy' else None
-        ctx = multiprocessing.get_context(start_method)
-
-        with ctx.Pool(processes=self.sampling) as pool:
-            self.results = pool.starmap(self.run_one_sampling, zip(repeat(train), self.child_states, list(range(self.sampling))))
+        if self.sampling == 1:
+            # Fast path: no multiprocessing overhead
+            self.results = [
+                self.run_one_sampling(train, self.child_states[0], 0)
+            ]
+        else:
+            # Use 'spawn' for CUDA safety; otherwise, default context
+            start_method = 'spawn' if self.em._backend == 'cupy' else None
+            ctx = multiprocessing.get_context(start_method)
+            try:
+                with ctx.Pool(processes=self.sampling) as pool:
+                    self.results = pool.starmap(
+                        self.run_one_sampling,
+                        zip(repeat(train), self.child_states, list(range(self.sampling)))
+                    )
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    "Multiprocessing failed; ensure your entrypoint is guarded with "
+                    "`if __name__ == \"__main__\":` or set sampling=1."
+                ) from exc
 
     def run_one_sampling(self, data, seed, i):
         """Executes an EM optimization run with random initialization.

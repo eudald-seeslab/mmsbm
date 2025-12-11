@@ -183,6 +183,27 @@ def test_run_one_sampling_executes_and_returns_expected_keys():
     )
 
 
+def test_sampling_one_does_not_spawn_pool(monkeypatch):
+    """sampling=1 should avoid multiprocessing Pool."""
+    monkeypatch.setattr("multiprocessing.get_context", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should not be called")))
+
+    mm = MMSBM(2, 2, iterations=1, sampling=1, seed=5, backend="numpy")
+    mm.fit(mock_data(5, n=20), silent=True)  # should not raise
+
+
+def test_sampling_gt_one_pool_failure_gives_hint(monkeypatch):
+    """Pool errors on Windows should surface actionable guidance."""
+    class DummyCtx:
+        def Pool(self, *args, **kwargs):
+            raise RuntimeError("no main guard")
+    monkeypatch.setattr("multiprocessing.get_context", lambda *_args, **_kwargs: DummyCtx())
+
+    mm = MMSBM(2, 2, iterations=1, sampling=2, seed=6, backend="numpy")
+    with pytest.raises(RuntimeError) as excinfo:
+        mm.fit(mock_data(6, n=10), silent=True)
+    assert "entrypoint is guarded" in str(excinfo.value)
+
+
 def test_normalization_factors_align_with_indices():
     """Normalization factors should align to user/item indices, not dict order."""
     data_df = pd.DataFrame(
