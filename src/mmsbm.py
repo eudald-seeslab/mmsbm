@@ -177,9 +177,9 @@ class MMSBM:
             # If we cannot set the lock (e.g. on certain platforms), just continue
             pass
 
-        # Use 'spawn' for CUDA safety; otherwise, use default (fork)
-        start_method = 'spawn' if self.em._backend == 'cupy' else None
-        ctx = multiprocessing.get_context(start_method)
+        # Always use 'spawn' for cross-platform safety and to avoid
+        # fork() deadlock issues in multi-threaded processes
+        ctx = multiprocessing.get_context('spawn')
 
         with ctx.Pool(processes=self.sampling) as pool:
             self.results = pool.starmap(self.run_one_sampling, zip(repeat(train), self.child_states, list(range(self.sampling))))
