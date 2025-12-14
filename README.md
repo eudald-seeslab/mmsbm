@@ -39,6 +39,7 @@ Make sure you have a compatible NVIDIA driver and CUDA toolkit installed. Then i
 ```bash
 pip install mmsbm[cupy]
 ```
+> **Note**: The CuPy backend requires **Python 3.12 or lower**. As of December 2025, CuPy does not provide pre-built wheels for Python 3.13+.
 
 You can also install all optional dependencies with:
 ```bash

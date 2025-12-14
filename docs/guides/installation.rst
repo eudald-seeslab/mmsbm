@@ -41,6 +41,9 @@ To enable the ``cupy`` backend for NVIDIA GPUs, you first need a compatible CUDA
 
     pip install mmsbm[cupy]
 
+.. note::
+   The CuPy backend requires **Python 3.12 or lower**. As of December 2025, CuPy does not provide pre-built wheels for Python 3.13+.
+
 You can also install all extras at once::
 
     pip install mmsbm[numba,cupy]
