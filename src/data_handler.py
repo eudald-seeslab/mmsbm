@@ -24,6 +24,13 @@ class DataHandler:
         assert df.isnull().sum().sum() == 0, "Data contains missing values. Aborting."
 
     @staticmethod
+    def _to_object_str(data):
+        out = data.copy()
+        for col in out.columns:
+            out[col] = [str(x) for x in out[col].tolist()]
+        return out
+
+    @staticmethod
     def _rename_values(x, dict_):
         return [dict_[str(a)] for a in x]
 
@@ -92,7 +99,7 @@ class DataHandler:
 
     def format_train_data(self, data):
         # Convert to strings
-        data = data.astype(str)
+        data = self._to_object_str(data)
 
         self._check_data(data)
 
@@ -122,7 +129,7 @@ class DataHandler:
 
     def format_test_data(self, data):
         # Convert to strings
-        data = data.astype(str)
+        data = self._to_object_str(data)
 
         # Check that it's usable
         self._check_data(data)
