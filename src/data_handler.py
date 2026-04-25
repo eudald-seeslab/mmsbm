@@ -27,7 +27,8 @@ class DataHandler:
     def _to_object_str(data):
         out = data.copy()
         for col in out.columns:
-            out[col] = [str(x) for x in out[col].tolist()]
+            values = [str(x) for x in out[col].tolist()]
+            out[col] = pd.Series(values, index=out.index, dtype=object)
         return out
 
     @staticmethod

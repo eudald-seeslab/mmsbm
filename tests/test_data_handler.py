@@ -1,8 +1,69 @@
 import numpy as np
 import pandas as pd
 import logging
+import pytest
 
 from data_handler import DataHandler
+
+
+def test_format_train_data_pandas_stringdtype_columns():
+    if not hasattr(pd, "StringDtype"):
+        pytest.skip("pandas StringDtype not available")
+
+    s = pd.StringDtype()
+    train_df = pd.DataFrame(
+        {
+            "users": pd.Series(["u1", "u2", "u1", "u3"], dtype=s),
+            "items": pd.Series(["i1", "i2", "i1", "i3"], dtype=s),
+            "ratings": pd.Series(["1", "2", "3", "1"], dtype=s),
+        }
+    )
+    dh = DataHandler()
+    out = dh.format_train_data(train_df)
+    assert out.shape == (4, 3)
+    assert np.issubdtype(out.dtype, np.integer)
+
+
+def test_format_test_data_pandas_stringdtype_after_train():
+    if not hasattr(pd, "StringDtype"):
+        pytest.skip("pandas StringDtype not available")
+
+    s = pd.StringDtype()
+    train_df = pd.DataFrame(
+        {
+            "users": pd.Series(["u1", "u2"], dtype=s),
+            "items": pd.Series(["i1", "i2"], dtype=s),
+            "ratings": pd.Series(["1", "2"], dtype=s),
+        }
+    )
+    test_df = pd.DataFrame(
+        {
+            "users": pd.Series(["u1", "u2"], dtype=s),
+            "items": pd.Series(["i1", "i2"], dtype=s),
+            "ratings": pd.Series(["1", "2"], dtype=s),
+        }
+    )
+    dh = DataHandler()
+    _ = dh.format_train_data(train_df)
+    out = dh.format_test_data(test_df)
+    assert out.shape == (2, 3)
+    assert np.issubdtype(out.dtype, np.integer)
+
+
+def test_to_object_str_uses_object_dtype_columns():
+    if not hasattr(pd, "StringDtype"):
+        pytest.skip("pandas StringDtype not available")
+    s = pd.StringDtype()
+    df = pd.DataFrame(
+        {
+            "users": pd.Series(["u1", "u2"], dtype=s),
+            "items": pd.Series(["i1", "i2"], dtype=s),
+            "ratings": pd.Series(["1", "2"], dtype=s),
+        }
+    )
+    converted = DataHandler._to_object_str(df)
+    for c in converted.columns:
+        assert converted[c].dtype == object
 
 
 def test_test_users_subset_of_train_does_not_raise():

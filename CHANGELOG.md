@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.7] - 2026-04-25
+
+### Fixed
+- Data handling: `_to_object_str` now assigns with explicit `dtype=object` so pandas 2.3+ / 3.x does not keep `StringDtype` after the per-cell `str` step, which would still break integer list assignment in `parse_train_data` / `parse_test_data`.
+
 ## [1.0.6] - 2026-04-24
 
 ### Fixed
