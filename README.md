@@ -78,7 +78,7 @@ The three backends compute the same quantities and agree to about 1e-12 relative
 
 ### Data Format
 
-The input data should be a pandas DataFrame with exactly 3 columns calles _users_, _items_, and _ratings_. For example:
+The input data is a pandas DataFrame with a column of users, a column of items and a column of ratings. The columns are found by name, `users`, `items` and `ratings` by default, so their order does not matter and any other column is ignored; other names are given with `user_col`, `item_col` and `rating_col` when the model is created. A DataFrame that has none of these names and exactly three columns is read by position, with a warning that says which column is taken as what, and a list of `(user, item, rating)` tuples or a 2-D array is read by position without one. Any other DataFrame raises `ValueError`. Users, items and ratings can be of any type: they are converted to strings and encoded internally, and the results are reported with the original labels. For example:
 
 ```python
 import pandas as pd
@@ -102,6 +102,8 @@ test = pd.DataFrame(
 
 ```
 
+The data passed to `predict` needs only the user and item columns; without the ratings the model predicts but `score` and `held_out_log_likelihood` are not available.
+
 ### Model Configuration
 
 ```python
@@ -119,7 +121,10 @@ model = MMSBM(
     debug=False,        # Enable debug logging
     degree_corrected=False,  # Fit the degree-corrected variant (see below)
     chunk_size=None,    # Rows per block of the E-step (None: as many as keep the ω tensor under 256 MiB)
-    log_file="mmsbm.log"  # Copy of the log messages; None logs to the console only
+    log_file="mmsbm.log",  # Copy of the log messages; None logs to the console only
+    user_col="users",   # Names of the columns of the data that hold the users, the items and the ratings
+    item_col="items",
+    rating_col="ratings",
 )
 ```
 

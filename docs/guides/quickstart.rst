@@ -20,6 +20,11 @@ Basic Usage
         'ratings': [5, 3, 4, 1]
     })
 
+   The columns are found by these names, in any order, and other columns are
+   ignored; other names are given with ``user_col``, ``item_col`` and
+   ``rating_col``. A list of ``(user, item, rating)`` tuples or a 2-D array is
+   read by position.
+
 3. Initialize the model::
 
     model = MMSBM(
@@ -37,6 +42,9 @@ Basic Usage
 5. Make predictions::
 
     predictions = model.predict(test_data)
+
+   ``test_data`` needs only the user and item columns; with a rating column
+   too, ``model.score()`` compares the predictions with it.
 
 Complete Example
 ----------------
@@ -92,6 +100,7 @@ Key parameters when initializing MMSBM:
 * ``item_groups``: Number of item groups (L)
 * ``chunk_size``: Rows per block of the E-step; by default as many as keep the responsibility tensor under 256 MiB
 * ``log_file``: File that receives a copy of the log messages (``None`` for console only)
+* ``user_col``, ``item_col``, ``rating_col``: Names of the data columns (default ``users``, ``items``, ``ratings``)
 * ``iterations``: Number of EM iterations
 * ``sampling``: Number of parallel runs
 * ``seed``: Random seed for reproducibility

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0] - 2026-10-15
+
+### Added
+- `MMSBM(..., user_col="users", item_col="items", rating_col="ratings")`: the names of the columns of the data that hold the users, the items and the ratings. `fit`, `predict`, `predict_links`, `cv_fit` and `select_groups` look the columns up by these names, in any order, and ignore any other column (`DataHandler.select_columns`).
+- `predict` and `predict_links` accept data without a rating column, since the predictions do not need it; `score` and `held_out_log_likelihood` then raise `AssertionError` saying so.
+- The data can also be a list of `(user, item, rating)` tuples or a 2-D array, read by position.
+
+### Changed
+- Column handling mixed position and name: `fit` read the first three columns whatever their names, while the "not in the training set" filter of `predict` (and so of `cv_fit` and `select_groups`) looked for the names `users`, `items` and `ratings` and raised `KeyError` otherwise. With the right names in another order, or an extra column before them, `fit` trained silently on the wrong columns and `predict` then dropped every row. Now every entry point selects the columns by name. A DataFrame with none of the names and exactly as many columns as needed (three, or two for `predict` and `predict_links`) is still read by position, now with a warning that says which column is taken as what. A DataFrame with more columns and none of the names, which was read by position silently, raises `ValueError`.
+
+### Removed
+- `DataHandler._get_data`, an unused CSV reader.
+
 ## [1.3.0] - 2026-10-15
 
 ### Added

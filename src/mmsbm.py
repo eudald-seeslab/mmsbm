@@ -12,7 +12,7 @@ from helpers import assign_folds, drop_unseen
 
 from logger import setup_logger
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 
 class MMSBM:
@@ -69,6 +69,13 @@ class MMSBM:
         File that receives a copy of the log messages, relative to the working directory. ``None`` logs to the
         console only.
 
+    user_col, item_col, rating_col: str, default="users", "items", "ratings"
+        Names of the columns of the data that hold the users, the items and the ratings. Every method that takes
+        data (:meth:`fit`, :meth:`predict`, :meth:`predict_links`, :meth:`cv_fit`, :meth:`select_groups`) looks
+        the columns up by these names, in any order, and ignores any other column. A DataFrame that has none of
+        the names and exactly as many columns as needed is read by position, with a warning; a list of tuples or a
+        2-D array is read by position without one. Any other DataFrame raises ``ValueError``.
+
     Attributes
     ---------
     results: list of dict or None
@@ -111,6 +118,9 @@ class MMSBM:
         degree_corrected=False,
         chunk_size=None,
         log_file="mmsbm.log",
+        user_col="users",
+        item_col="items",
+        rating_col="ratings",
     ):
         self.start_time = datetime.now()
         self.user_groups = user_groups
@@ -122,6 +132,9 @@ class MMSBM:
         self.degree_corrected = degree_corrected
         self.chunk_size = chunk_size
         self.log_file = log_file
+        self.user_col = user_col
+        self.item_col = item_col
+        self.rating_col = rating_col
         self.selected_groups = None
         self._show_progress = True
 
@@ -213,7 +226,8 @@ class MMSBM:
          of all results for later model selection.
 
          Args:
-             data: DataFrame with columns [users, items, ratings]
+             data: DataFrame with the user, item and rating columns (``user_col``, ``item_col`` and
+                 ``rating_col``), or a list of tuples or a 2-D array with the three in that order
              silent: If True, suppresses progress output
 
          See Also:
@@ -226,7 +240,7 @@ class MMSBM:
             )
 
         # Get data
-        self.data_handler = DataHandler()
+        self.data_handler = self._new_data_handler()
         train = self.data_handler.format_train_data(data)
         self._prepare_objects(train)
 
@@ -384,6 +398,18 @@ class MMSBM:
             "You need to predict before computing the goodness of fit " "parameters."
         )
 
+    def _check_has_ratings(self):
+        assert self.test.shape[1] == 3, (
+            "The data passed to predict had no rating column, so there is nothing to compare the predictions with."
+        )
+
+    def _new_data_handler(self):
+        return DataHandler(self.user_col, self.item_col, self.rating_col)
+
+    def _select_columns(self, data, ratings="required"):
+        """The user, item and rating columns of ``data`` (see :meth:`DataHandler.select_columns`)."""
+        return self._new_data_handler().select_columns(data, ratings)
+
     def predict(self, data):
         """Predicts ratings for new user-item pairs.
 
@@ -393,7 +419,10 @@ class MMSBM:
         log-likelihood (see :meth:`choose_best_run`).
 
         Args:
-            data: DataFrame with columns [users, items, ratings]
+            data: DataFrame with the user and item columns (``user_col`` and ``item_col``) and, optionally, the
+                rating column, or a list of tuples or a 2-D array with two or three columns in that order. Rows
+                whose user or item (or rating) was not in the training data are dropped with a warning. Without
+                ratings the predictions can be made but not scored.
 
         Returns:
             Array with rating probabilities for each possible rating value
@@ -439,9 +468,11 @@ class MMSBM:
         averaged over all sampling runs, as in :meth:`predict`.
 
         Args:
-            data: DataFrame with columns [users, items]; a ratings column, if
-                present, is ignored. Pairs whose user or item was not in the
-                training set are dropped with a warning.
+            data: DataFrame with the user and item columns (``user_col`` and
+                ``item_col``), or a list of tuples or a 2-D array with the two
+                in that order; a rating column, if present, is ignored. Pairs
+                whose user or item was not in the training set are dropped
+                with a warning.
 
         Returns:
             Array with one probability per (kept) row of ``data``.
@@ -484,6 +515,7 @@ class MMSBM:
         """
 
         self._check_has_predictions()
+        self._check_has_ratings()
         assert 0 <= smoothing <= 1, "smoothing must be between 0 and 1."
 
         real = self.test[:, 2]
@@ -544,6 +576,7 @@ class MMSBM:
         """
 
         self._check_has_predictions()
+        self._check_has_ratings()
 
         stats = self._compute_stats(self.prediction_matrix)
         stats["likelihood"] = self.likelihood
@@ -592,9 +625,8 @@ class MMSBM:
             earlier versions for the same seed.
 
         Args:
-            data: DataFrame with user, item, and rating columns
+            data: DataFrame with the user, item and rating columns (see :meth:`fit`)
                 The input data for model fitting and validation.
-                Shape: (n_samples, 3)
             folds: int, default=5
                 Number of cross-validation folds, between 2 and the number of
                 ratings.
@@ -609,6 +641,7 @@ class MMSBM:
 
         Raises:
             AssertionError: If ``folds`` is smaller than 2 or larger than the number of ratings.
+            ValueError: If the columns cannot be found (see :meth:`fit`).
 
         Notes:
             - Uses parallel processing for sampling runs
@@ -620,6 +653,7 @@ class MMSBM:
             select_groups: For choosing the number of groups by cross-validation
         """
 
+        data = self._select_columns(data)
         assert 2 <= folds <= len(data), (
             f"folds must be between 2 and the number of ratings ({len(data)})."
         )
@@ -688,7 +722,7 @@ class MMSBM:
         the criterion and favour too few groups.
 
         Args:
-            data: DataFrame with columns [users, items, ratings]
+            data: DataFrame with the user, item and rating columns (see :meth:`fit`)
             user_groups: Iterable of candidate numbers of user groups.
             item_groups: Iterable of candidate numbers of item groups.
             folds: int, default=5
@@ -716,6 +750,7 @@ class MMSBM:
         )
         user_groups = list(user_groups)
         item_groups = list(item_groups)
+        data = self._select_columns(data)
         fold_ids = assign_folds(data, folds, self.rng)
 
         rows = []
@@ -737,6 +772,9 @@ class MMSBM:
                         degree_corrected=self.degree_corrected,
                         chunk_size=self.chunk_size,
                         log_file=self.log_file,
+                        user_col=self.user_col,
+                        item_col=self.item_col,
+                        rating_col=self.rating_col,
                     )
                     model._show_progress = False
                     model.fit(train, silent=True)
