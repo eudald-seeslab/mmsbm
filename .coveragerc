@@ -1,5 +1,5 @@
 [run]
-# Every module of the package (setup.py installs them as top-level modules)
+# The package and the deprecated top-level aliases of its modules
 source =
     mmsbm
     expectation_maximization

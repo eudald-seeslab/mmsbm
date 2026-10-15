@@ -7,7 +7,11 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 import re
+import sys
 from pathlib import Path
+
+# Import the package from the source tree for autodoc
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 project = 'mmsbm'
 copyright = '2024, Eudald Correig-Fraga'
@@ -15,7 +19,7 @@ author = 'Eudald Correig-Fraga'
 # Single source of the version: mmsbm.__version__
 release = re.search(
     r'^__version__ = "([^"]+)"',
-    (Path(__file__).resolve().parents[1] / 'src' / 'mmsbm.py').read_text(encoding='utf-8'),
+    (Path(__file__).resolve().parents[1] / 'src' / 'mmsbm' / '__init__.py').read_text(encoding='utf-8'),
     re.M,
 ).group(1)
 
@@ -29,6 +33,9 @@ extensions = [
     'sphinx.ext.mathjax',
     'myst_parser',
 ]
+
+# Optional backends need not be installed to build the documentation
+autodoc_mock_imports = ['numba', 'cupy', 'cupyx']
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']

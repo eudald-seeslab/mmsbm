@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backend import load_backend
-from data_handler import DataHandler
-from expectation_maximization import ExpectationMaximization
-from mmsbm import MMSBM
+from mmsbm.backend import load_backend
+from mmsbm.data_handler import DataHandler
+from mmsbm.expectation_maximization import ExpectationMaximization
+from mmsbm import MMSBM, MMSBMError
 from tests.synthetic import planted_data, best_agreement, ordered
 
 
@@ -107,7 +107,7 @@ def test_predict_links_ignores_ratings_and_drops_unseen(dc_model, planted):
 def test_predict_links_requires_degree_corrected():
     model = MMSBM(2, 2, iterations=5, seed=1, backend="numpy")
     model.fit(mock_data(1), silent=True)
-    with pytest.raises(AssertionError):
+    with pytest.raises(MMSBMError):
         model.predict_links(mock_data(2))
 
 
@@ -165,7 +165,7 @@ def test_held_out_log_likelihood_matches_manual(dc_model):
 
 def test_held_out_log_likelihood_requires_predictions():
     model = MMSBM(2, 2, seed=1)
-    with pytest.raises(AssertionError):
+    with pytest.raises(MMSBMError):
         model.held_out_log_likelihood()
 
 

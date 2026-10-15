@@ -6,9 +6,9 @@ Backends that cannot be loaded in this environment are skipped.
 import numpy as np
 import pytest
 
-from backend import load_backend
-from expectation_maximization import ExpectationMaximization, CHUNK_BUDGET
-from data_handler import DataHandler
+from mmsbm.backend import load_backend
+from mmsbm.expectation_maximization import ExpectationMaximization, CHUNK_BUDGET
+from mmsbm.data_handler import DataHandler
 from mmsbm import MMSBM
 
 

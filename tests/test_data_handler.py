@@ -3,7 +3,7 @@ import pandas as pd
 import logging
 import pytest
 
-from data_handler import DataHandler
+from mmsbm.data_handler import DataHandler
 
 
 def test_format_train_data_pandas_stringdtype_columns():
@@ -92,6 +92,21 @@ def test_test_users_subset_of_train_does_not_raise():
     assert out.shape[0] == len(test_df)
     assert np.issubdtype(out.dtype, np.integer)
 
+
+
+def test_missing_values_are_rejected():
+    from mmsbm import MMSBMError
+
+    train = pd.DataFrame({"users": ["u1", "u2"], "items": ["i1", None], "ratings": [1, 2]})
+    with pytest.raises(MMSBMError, match="missing values"):
+        DataHandler().format_train_data(train)
+
+    dh = DataHandler()
+    dh.format_train_data(train.fillna("i2"))
+    with pytest.raises(MMSBMError, match="missing values"):
+        dh.format_test_data(pd.DataFrame({"users": ["u1"], "items": ["i1"], "ratings": [np.nan]}))
+    with pytest.raises(MMSBMError, match="missing values"):
+        dh.format_pairs(pd.DataFrame({"users": [None], "items": ["i1"]}))
 
 
 def test_test_users_only_in_test_are_dropped(caplog):

@@ -6,13 +6,12 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 
-from data_handler import DataHandler
-from expectation_maximization import ExpectationMaximization
-from helpers import assign_folds, drop_unseen
-
-from logger import setup_logger
-
-__version__ = "1.4.0"
+from mmsbm._deprecation import warn_deprecated
+from mmsbm.data_handler import DataHandler
+from mmsbm.exceptions import MMSBMError, NotFittedError
+from mmsbm.expectation_maximization import ExpectationMaximization
+from mmsbm.helpers import assign_folds, drop_unseen
+from mmsbm.logger import setup_logger
 
 
 class MMSBM:
@@ -65,9 +64,13 @@ class MMSBM:
         the blocks, which can change results in the last bits. The numba M-step never materialises the tensor and
         ignores this parameter.
 
-    log_file: str or None, default="mmsbm.log"
+    log_file: str or None, default=None
         File that receives a copy of the log messages, relative to the working directory. ``None`` logs to the
         console only.
+
+        .. versionchanged:: 2.0.0
+            The default was ``"mmsbm.log"``: every program that used the package wrote that file in its working
+            directory.
 
     user_col, item_col, rating_col: str, default="users", "items", "ratings"
         Names of the columns of the data that hold the users, the items and the ratings. Every method that takes
@@ -117,7 +120,7 @@ class MMSBM:
         backend="auto",
         degree_corrected=False,
         chunk_size=None,
-        log_file="mmsbm.log",
+        log_file=None,
         user_col="users",
         item_col="items",
         rating_col="ratings",
@@ -199,10 +202,12 @@ class MMSBM:
     def d0(self):
         """Items rated by each user, ``{user_idx: [item_idx, ...]}``.
 
-        Built on first access from the training data (it is not needed by the
-        EM algorithm and is kept for backwards compatibility).
+        .. deprecated:: 2.0.0
+            Nothing in the package uses it; build it from ``train`` if needed.
         """
-        assert self.train is not None, "You need to fit the model first."
+        warn_deprecated("'MMSBM.d0'", "the 'train' array")
+        if self.train is None:
+            raise NotFittedError("You need to fit the model first.")
         if self._d0 is None:
             self._d0 = self._neighbours(self.train[:, 0], self.train[:, 1])
         return self._d0
@@ -211,10 +216,12 @@ class MMSBM:
     def d1(self):
         """Users that rated each item, ``{item_idx: [user_idx, ...]}``.
 
-        Built on first access from the training data (it is not needed by the
-        EM algorithm and is kept for backwards compatibility).
+        .. deprecated:: 2.0.0
+            Nothing in the package uses it; build it from ``train`` if needed.
         """
-        assert self.train is not None, "You need to fit the model first."
+        warn_deprecated("'MMSBM.d1'", "the 'train' array")
+        if self.train is None:
+            raise NotFittedError("You need to fit the model first.")
         if self._d1 is None:
             self._d1 = self._neighbours(self.train[:, 1], self.train[:, 0])
         return self._d1
@@ -391,17 +398,18 @@ class MMSBM:
         }
 
     def _check_is_fitted(self):
-        assert self.results is not None, "You need to fit the model before predicting."
+        if self.results is None:
+            raise NotFittedError("You need to fit the model before predicting.")
 
     def _check_has_predictions(self):
-        assert self.prediction_matrix is not None, (
-            "You need to predict before computing the goodness of fit " "parameters."
-        )
+        if self.prediction_matrix is None:
+            raise NotFittedError("You need to predict before computing the goodness of fit parameters.")
 
     def _check_has_ratings(self):
-        assert self.test.shape[1] == 3, (
-            "The data passed to predict had no rating column, so there is nothing to compare the predictions with."
-        )
+        if self.test.shape[1] != 3:
+            raise MMSBMError(
+                "The data passed to predict had no rating column, so there is nothing to compare the predictions with."
+            )
 
     def _new_data_handler(self):
         return DataHandler(self.user_col, self.item_col, self.rating_col)
@@ -479,10 +487,10 @@ class MMSBM:
         """
 
         self._check_is_fitted()
-        assert self.degree_corrected, (
-            "Link prediction is only defined for the degree-corrected model; "
-            "fit with degree_corrected=True."
-        )
+        if not self.degree_corrected:
+            raise MMSBMError(
+                "Link prediction is only defined for the degree-corrected model; fit with degree_corrected=True."
+            )
 
         pairs = self.data_handler.format_pairs(data)
         probabilities = [
@@ -516,7 +524,8 @@ class MMSBM:
 
         self._check_has_predictions()
         self._check_has_ratings()
-        assert 0 <= smoothing <= 1, "smoothing must be between 0 and 1."
+        if not 0 <= smoothing <= 1:
+            raise MMSBMError("smoothing must be between 0 and 1.")
 
         real = self.test[:, 2]
         probabilities = self.prediction_matrix[np.arange(len(real)), real]
@@ -568,7 +577,7 @@ class MMSBM:
         Example:
             >>> results = model.score()
             >>> print(f"Model accuracy: {results['stats']['accuracy']:.3f}")
-            >>> print(f"User memberships:\n{results['objects']['theta']}")
+            >>> print(results['objects']['theta'])
 
         See Also:
             predict: For making predictions on new data
@@ -604,15 +613,18 @@ class MMSBM:
         of model performance and helps avoid overfitting.
 
         The function:
-        1. Assigns every rating to a fold with :func:`helpers.assign_folds`:
+
+        1. Assigns every rating to a fold with :func:`mmsbm.helpers.assign_folds`:
            the ratings of each user are dealt round-robin across the folds,
            so every user with at least two ratings is in the training part of
            every fold and the folds have (almost) the same size
         2. For each fold:
-            - Trains on the other k-1 folds
-            - Tests on the fold, leaving out the ratings whose user or item
-              does not appear in the training folds
-            - Runs multiple sampling iterations
+
+           - Trains on the other k-1 folds
+           - Tests on the fold, leaving out the ratings whose user or item
+             does not appear in the training folds
+           - Runs multiple sampling iterations
+
         3. Returns accuracies for each fold
 
         .. versionchanged:: 1.2.0
@@ -640,7 +652,7 @@ class MMSBM:
             >>> print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
 
         Raises:
-            AssertionError: If ``folds`` is smaller than 2 or larger than the number of ratings.
+            MMSBMError: If ``folds`` is smaller than 2 or larger than the number of ratings.
             ValueError: If the columns cannot be found (see :meth:`fit`).
 
         Notes:
@@ -654,9 +666,8 @@ class MMSBM:
         """
 
         data = self._select_columns(data)
-        assert 2 <= folds <= len(data), (
-            f"folds must be between 2 and the number of ratings ({len(data)})."
-        )
+        if not 2 <= folds <= len(data):
+            raise MMSBMError(f"folds must be between 2 and the number of ratings ({len(data)}).")
         fold_ids = assign_folds(data, folds, self.rng)
 
         accuracies = []
@@ -745,9 +756,8 @@ class MMSBM:
             >>> best = MMSBM(*model.selected_groups, degree_corrected=model.degree_corrected)
         """
 
-        assert criterion in ("log_likelihood", "accuracy"), (
-            "criterion must be 'log_likelihood' or 'accuracy'."
-        )
+        if criterion not in ("log_likelihood", "accuracy"):
+            raise MMSBMError("criterion must be 'log_likelihood' or 'accuracy'.")
         user_groups = list(user_groups)
         item_groups = list(item_groups)
         data = self._select_columns(data)
@@ -817,13 +827,17 @@ class MMSBM:
             documentation always stated. With ``sampling=1`` nothing changes.
 
         Args:
-            rats: Ignored; kept for backwards compatibility.
+            rats: Ignored since 1.2.0.
+
+                .. deprecated:: 2.0.0
 
         Returns:
             int: Position in ``self.results`` of the best run (the first one in
             case of a tie).
         """
 
+        if rats is not None:
+            warn_deprecated("The 'rats' argument of 'choose_best_run', ignored since 1.2.0,", "no argument")
         self._check_is_fitted()
         likelihoods = [float(a["likelihood"]) for a in self.results]
         return int(np.argmax(likelihoods))

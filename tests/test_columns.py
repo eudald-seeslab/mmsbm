@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from data_handler import DataHandler
-from mmsbm import MMSBM
+from mmsbm.data_handler import DataHandler
+from mmsbm import MMSBM, MMSBMError
 from tests.synthetic import planted_data
 from tests.test_mmsbm import mock_data
 
@@ -34,7 +34,7 @@ def assert_same_fit(model, prediction, reference):
 @pytest.fixture
 def warnings(caplog, monkeypatch):
     """``caplog`` for the MMSBM logger, which stops propagating to the root logger whenever a model sets it up."""
-    import mmsbm as mmsbm_module
+    import mmsbm.model as mmsbm_module
 
     original = mmsbm_module.setup_logger
 
@@ -117,9 +117,9 @@ def test_predict_without_ratings(reference, warnings):
     model, prediction = fitted(data, test=data[["items", "users"]])
     assert_same_fit(model, prediction, reference)
     assert model.test.shape == (len(data), 2)
-    with pytest.raises(AssertionError, match="no rating column"):
+    with pytest.raises(MMSBMError, match="no rating column"):
         model.score()
-    with pytest.raises(AssertionError, match="no rating column"):
+    with pytest.raises(MMSBMError, match="no rating column"):
         model.held_out_log_likelihood()
     assert warnings.text == ""
 

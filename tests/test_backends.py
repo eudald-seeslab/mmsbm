@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from backend import load_backend
+from mmsbm.backend import load_backend
 
 
 @pytest.mark.parametrize("backend_name", ["numba", "cupy"])

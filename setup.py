@@ -6,14 +6,16 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 # Single source of the version: mmsbm.__version__
-with open("src/mmsbm.py", "r") as fh:
+with open("src/mmsbm/__init__.py", "r") as fh:
     version = re.search(r'^__version__ = "([^"]+)"', fh.read(), re.M).group(1)
 
 setup(
     name="mmsbm",
     version=version,
     description="Compute Mixed Membership Stochastic Block Models.",
-    py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers", "backend",
+    packages=["mmsbm"],
+    # Deprecated aliases of the modules of the package, kept for the whole 2.x series (removed in 3.0)
+    py_modules=["expectation_maximization", "data_handler", "helpers", "backend",
                 "logger", "kernels_numpy", "kernels_numba", "kernels_cupy"],
     package_dir={"": "src"},
     url="https://github.com/eudald-seeslab/mmsbm",

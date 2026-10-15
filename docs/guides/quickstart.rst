@@ -99,7 +99,7 @@ Key parameters when initializing MMSBM:
 * ``user_groups``: Number of user groups (K)
 * ``item_groups``: Number of item groups (L)
 * ``chunk_size``: Rows per block of the E-step; by default as many as keep the responsibility tensor under 256 MiB
-* ``log_file``: File that receives a copy of the log messages (``None`` for console only)
+* ``log_file``: File that receives a copy of the log messages (default ``None``: console only)
 * ``user_col``, ``item_col``, ``rating_col``: Names of the data columns (default ``users``, ``items``, ``ratings``)
 * ``iterations``: Number of EM iterations
 * ``sampling``: Number of parallel runs
@@ -171,6 +171,15 @@ For debugging and monitoring::
     model.fit(data)
 
 This will print additional information during fitting.
+
+Errors
+^^^^^^
+
+Invalid input (missing values, columns that cannot be found, ``folds`` or
+``smoothing`` out of range) raises ``mmsbm.MMSBMError``, a ``ValueError``;
+calling ``predict`` before ``fit`` or ``score`` before ``predict`` raises its
+subclass ``mmsbm.NotFittedError``. Until 2.0 these were ``AssertionError``,
+which ``except AssertionError`` keeps catching during the 2.x series.
 
 Next Steps
 ----------

@@ -121,7 +121,7 @@ model = MMSBM(
     debug=False,        # Enable debug logging
     degree_corrected=False,  # Fit the degree-corrected variant (see below)
     chunk_size=None,    # Rows per block of the E-step (None: as many as keep the ω tensor under 256 MiB)
-    log_file="mmsbm.log",  # Copy of the log messages; None logs to the console only
+    log_file=None,      # File that receives a copy of the log messages; None (the default) logs to the console only
     user_col="users",   # Names of the columns of the data that hold the users, the items and the ratings
     item_col="items",
     rating_col="ratings",
@@ -234,6 +234,12 @@ best.fit(train)
 ```
 
 The held-out log-likelihood is used instead of a penalised training likelihood (AIC, BIC) because the number of membership parameters grows with the number of users and items, outside the regime where such penalties are justified. Because the fits are maximum likelihood, the predicted probabilities are smoothed towards the uniform distribution (`smoothing=0.05` by default) before taking logs; otherwise a handful of held-out ratings predicted with near-zero probability dominate the mean and favour too few groups. `criterion="accuracy"` selects by held-out accuracy instead, and the grid reports both. The grid costs `len(user_groups) × len(item_groups) × folds` fits, so start with a coarse grid and few iterations. After any `predict`, `model.held_out_log_likelihood()` gives the same criterion for a single fit.
+
+## Compatibility and deprecation policy
+
+Since 2.0 `mmsbm` is a package: `from mmsbm import MMSBM` is unchanged, and the package also exports `DataHandler`, `ExpectationMaximization`, the exceptions `MMSBMError` (a `ValueError`) and `NotFittedError`, and `__version__`. Invalid input and calls in the wrong order raise these exceptions; until 2.0 they raised `AssertionError`, which `except AssertionError` keeps catching for the whole 2.x series.
+
+A deprecated feature emits a `FutureWarning` that names its replacement, keeps working for the whole major series in which it was deprecated, and is removed in the next major version, which is published at least twelve months after the deprecation. Everything deprecated in 2.0.0 (the old top-level modules `helpers`, `logger`, `backend`, `data_handler`, `expectation_maximization` and `kernels_*`, now aliases of `mmsbm.<name>`; `mmsbm.assign_folds`, `mmsbm.drop_unseen` and `mmsbm.setup_logger`; the `rats` argument of `choose_best_run`; `d0` and `d1`; the `AssertionError` base of the exceptions) is therefore removed in 3.0, not before October 2027. Models pickled with 1.x load in 2.x. The warnings are `FutureWarning` rather than `DeprecationWarning` because Python hides the latter outside `__main__` and test runners; to turn them into errors and find every use at once, run with `python -W error::FutureWarning`.
 
 ## Running Tests
 

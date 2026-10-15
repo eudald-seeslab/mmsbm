@@ -2,8 +2,8 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from mmsbm import MMSBM
-from data_handler import DataHandler
+from mmsbm import MMSBM, MMSBMError, NotFittedError
+from mmsbm.data_handler import DataHandler
 
 
 RATING_NUM = 100
@@ -85,9 +85,9 @@ def test_cv_fit_sparse_data_uses_every_fold():
 
 def test_cv_fit_rejects_bad_fold_numbers():
     mm = MMSBM(2, 2, iterations=1, seed=1)
-    with pytest.raises(AssertionError):
+    with pytest.raises(MMSBMError):
         mm.cv_fit(mock_data(1), folds=1)
-    with pytest.raises(AssertionError):
+    with pytest.raises(MMSBMError):
         mm.cv_fit(mock_data(1), folds=RATING_NUM + 1)
 
 
@@ -210,16 +210,16 @@ class TestObjects:
 
 
 def test_predict_without_fit_raises():
-    """Calling predict before fit should raise an AssertionError."""
+    """Calling predict before fit should raise a NotFittedError."""
     mm = MMSBM(2, 2, seed=1)
-    with pytest.raises(AssertionError):
+    with pytest.raises(NotFittedError):
         _ = mm.predict(mock_data(0))
 
 
 def test_score_without_predict_raises():
-    """Calling score before predict should raise an AssertionError."""
+    """Calling score before predict should raise a NotFittedError."""
     mm = MMSBM(2, 2, seed=1)
-    with pytest.raises(AssertionError):
+    with pytest.raises(NotFittedError):
         _ = mm.score()
 
 
@@ -229,11 +229,12 @@ def test_choose_best_run_selects_highest_likelihood():
     mm.results = [{"likelihood": -10.0}, {"likelihood": -3.0}, {"likelihood": -3.0}, {"likelihood": -7.0}]
 
     assert mm.choose_best_run() == 1
-    assert mm.choose_best_run([0.9, 0.1, 0.1, 0.1]) == 1  # the old argument is ignored
+    with pytest.warns(FutureWarning):
+        assert mm.choose_best_run([0.9, 0.1, 0.1, 0.1]) == 1  # the old argument is ignored
 
 
 def test_choose_best_run_requires_fit():
-    with pytest.raises(AssertionError):
+    with pytest.raises(MMSBMError):
         MMSBM(1, 1, seed=1).choose_best_run()
 
 
@@ -334,12 +335,12 @@ def test_run_one_sampling_executes_and_returns_expected_keys():
     )
 
 
-def test_log_file_none_writes_no_file(tmp_path, monkeypatch):
+def test_log_file_is_written_only_when_asked_for(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    MMSBM(2, 2, iterations=1, seed=1, log_file=None).fit(mock_data(1), silent=False)
-    assert not (tmp_path / "mmsbm.log").exists()
-
     MMSBM(2, 2, iterations=1, seed=1).fit(mock_data(1), silent=False)
+    assert list(tmp_path.iterdir()) == []
+
+    MMSBM(2, 2, iterations=1, seed=1, log_file="mmsbm.log").fit(mock_data(1), silent=False)
     assert (tmp_path / "mmsbm.log").exists()
 
 

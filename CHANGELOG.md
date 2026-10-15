@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.0.0] - 2026-10-15
+
+`mmsbm` is now a package. Nothing that worked with 1.4 stops working: everything that moved or changed keeps a compatibility path for the whole 2.x series and emits a `FutureWarning` that names the replacement (see the deprecation policy below). The only visible changes for a program that uses the documented API are the exception classes, which are still `AssertionError` subclasses, and the log file, which is no longer written unless asked for.
+
+### Changed
+- Package layout: the modules used to be installed at the top level of `site-packages` (`import helpers`, `import logger`, ...), where they could shadow, or be shadowed by, any other module of those names. They are now `mmsbm.model` (the `MMSBM` class), `mmsbm.data_handler`, `mmsbm.expectation_maximization`, `mmsbm.helpers`, `mmsbm.backend`, `mmsbm.logger`, `mmsbm.kernels_numpy`, `mmsbm.kernels_numba`, `mmsbm.kernels_cupy` and `mmsbm.exceptions`. `from mmsbm import MMSBM` is unchanged; `mmsbm` also exports `DataHandler`, `ExpectationMaximization`, `MMSBMError`, `NotFittedError` and `__version__`, and `MMSBM.__module__` is `"mmsbm"`, so pickles keep the 1.x path `mmsbm.MMSBM`.
+- Errors: invalid input and calls in the wrong order raise `mmsbm.MMSBMError`, a `ValueError`, or its subclass `mmsbm.NotFittedError` (also an `AttributeError`, as in scikit-learn) instead of `AssertionError`: `predict` before `fit`, `score` or `held_out_log_likelihood` before `predict`, `predict_links` on the standard model, `folds`, `smoothing` or `criterion` out of range, missing values, and scoring data without ratings. The `assert` statements they replace were removed by `python -O`, which silently disabled every check.
+- `MMSBM(log_file=None)` is the default: the log goes to the console unless a file is asked for. 1.x wrote `mmsbm.log` in the working directory of every program that used the package. `logger.setup_logger` has the same new default.
+- The API reference of the documentation is generated from the package (`docs/api/modules.rst`).
+
+### Fixed
+- Missing values in the data were never detected: the check ran after the values had been converted to strings, so a `NaN` or `None` became a user, item or rating called `"nan"` or `"None"`. The check now runs first and raises `MMSBMError`.
+
+### Deprecated, removed in 3.0 (not before October 2027)
+- The top-level modules `helpers`, `logger`, `backend`, `data_handler`, `expectation_maximization`, `kernels_numpy`, `kernels_numba` and `kernels_cupy`: they are aliases of `mmsbm.<name>` that expose the same objects and warn once per process when imported. Pickles of 1.x models, which refer to `data_handler.DataHandler` and `expectation_maximization.ExpectationMaximization`, load through them.
+- `mmsbm.assign_folds`, `mmsbm.drop_unseen` and `mmsbm.setup_logger`, which the module `mmsbm` of 1.x exposed because it imported them; use `mmsbm.helpers` and `mmsbm.logger`.
+- The `AssertionError` base of `MMSBMError`, which keeps `except AssertionError` working. No warning can be emitted for this one.
+- The `rats` argument of `choose_best_run`, ignored since 1.2.0 (warns when passed).
+- `MMSBM.d0` and `MMSBM.d1`, the dictionaries of neighbours, which nothing in the package has used since 1.1.1 (warn when read).
+
+### Deprecation policy
+A deprecated feature emits a `FutureWarning` that names its replacement, keeps working for the whole major series in which it was deprecated, and is removed in the next major version, which is published at least twelve months after the deprecation. `FutureWarning` rather than `DeprecationWarning` because Python hides the latter outside `__main__` and test runners, and the package is mostly used from scripts and notebooks. `python -W error::FutureWarning` turns them into errors.
+
 ## [1.4.0] - 2026-10-15
 
 ### Added

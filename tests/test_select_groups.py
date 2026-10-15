@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from helpers import assign_folds, drop_unseen
-from mmsbm import MMSBM
+from mmsbm.helpers import assign_folds, drop_unseen
+from mmsbm import MMSBM, MMSBMError
 from tests.synthetic import planted_data
 
 GRID_COLUMNS = [
@@ -64,7 +64,7 @@ def test_select_groups_is_consistent_with_its_criterion(criterion):
 def test_select_groups_rejects_unknown_criterion():
     data, _, _, _ = planted_data(0, n_users=20, n_items=30, density=0.3)
     model = MMSBM(2, 2, iterations=5, seed=1, backend="numpy")
-    with pytest.raises(AssertionError):
+    with pytest.raises(MMSBMError):
         model.select_groups(data, user_groups=[1], item_groups=[1], folds=2, criterion="mae")
 
 
@@ -78,5 +78,5 @@ def test_held_out_log_likelihood_smoothing_bounds_the_penalty():
     n_ratings = model.prediction_matrix.shape[1]
     assert smoothed >= np.log(0.05 / n_ratings)
     assert raw <= 0 and smoothed <= 0
-    with pytest.raises(AssertionError):
+    with pytest.raises(MMSBMError):
         model.held_out_log_likelihood(smoothing=2)
