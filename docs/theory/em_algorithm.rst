@@ -1,8 +1,8 @@
 Expectation-Maximization Algorithm
-================================
+==================================
 
 The Problem
-----------
+-----------
 
 We want to find the optimal parameters for our MMSBM model that best explain the observed ratings. These parameters are:
 
@@ -11,7 +11,7 @@ We want to find the optimal parameters for our MMSBM model that best explain the
 * :math:`p_{k\ell}(r)`: Probability of rating r for user group k and item group ℓ
 
 The Challenge
------------
+-------------
 
 We can't directly optimize these parameters because we don't know which groups were "responsible" for each rating. For example, when user u rates item i, we don't know which of u's group memberships interacted with which of i's group memberships to produce that rating.
 
@@ -21,10 +21,10 @@ This is where EM comes in. It's an iterative algorithm that:
 2. Updates the parameters based on these guesses (M-step)
 
 Key Variables and Notation
------------------------
+--------------------------
 
 Model Parameters
-^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^
 
 * :math:`\theta_{uk}`: User group memberships
     - Probability that user u belongs to group k
@@ -42,7 +42,7 @@ Model Parameters
     - Implemented as ``pr`` in the code
 
 Helper Variables
-^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^
 
 * :math:`R^O`: Set of observed ratings
     - All (user, item, rating) triplets in our training data
@@ -64,10 +64,10 @@ Helper Variables
     - Implemented in ``compute_omegas``
 
 The Algorithm
------------
+-------------
 
 Starting Point
-^^^^^^^^^^^^
+^^^^^^^^^^^^^^
 
 We begin with random initial values for :math:`\theta`, :math:`\eta`, and :math:`p`, properly normalized::
 
@@ -82,7 +82,7 @@ We begin with random initial values for :math:`\theta`, :math:`\eta`, and :math:
     pr = normalize_with_self(pr)         # Sum to 1 for each (k,ℓ)
 
 Expectation Step (E-step)
-^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In this step, we compute :math:`\omega_{ui}(k,\ell)`: our best guess for which groups were responsible for each rating.
 
@@ -109,7 +109,7 @@ Implementation::
         return np.divide(self._omegas, sum_omega[:, np.newaxis, np.newaxis])
 
 Maximization Step (M-step)
-^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Now we use our :math:`\omega` values to update the parameters. We're maximizing the likelihood: the probability of observing our actual ratings given the model parameters.
 
@@ -153,7 +153,7 @@ Implementation::
 
 
 Parameter Normalization
---------------------
+-----------------------
 
 All parameters must be normalized to represent valid probability distributions:
 
@@ -176,8 +176,46 @@ All parameters must be normalized to represent valid probability distributions:
                 temp / (np.where(temp.sum(axis=1) == 0, 1, temp.sum(axis=1)))[:, np.newaxis]
         ).reshape(df.shape)
 
+The degree-corrected M-step
+---------------------------
+
+With ``degree_corrected=True`` the E-step is unchanged: the responsibilities :math:`\omega_{ui}(k,\ell)` are computed by the same kernels, because the Poisson model attaches latent groups only to the observed ratings. The expected complete-data log-likelihood becomes
+
+.. math::
+   Q = \sum_{(u,i)} \sum_{k,\ell} \omega_{ui}(k,\ell) \log\big(\theta_{uk}\eta_{i\ell}p_{k\ell}(r_{ui})\big) - \sum_{k,\ell,r} \Theta_k H_\ell\, p_{k\ell}(r),
+
+and, in the degree gauge described in :doc:`mmsbm`, its maximisation has the closed form
+
+.. math::
+   \theta_{uk} = \sum_{i \in \partial u} \sum_\ell \omega_{ui}(k,\ell), \qquad
+   \eta_{i\ell} = \sum_{u \in \partial i} \sum_k \omega_{ui}(k,\ell), \qquad
+   p_{k\ell}(r) = \frac{\sum_{(u,i):\, r_{ui}=r} \omega_{ui}(k,\ell)}{\Theta_k H_\ell}.
+
+Compared with the standard M-step, the membership numerators are simply *not* divided by the degrees (so the rows of θ and η sum to the degrees), and the rating probabilities are divided by the half-edge counts of the two groups instead of being normalised over ratings. The three updates are jointly stationary, so the Poisson log-likelihood never decreases from one iteration to the next. The extra cost is a handful of column sums.
+
+Implementation::
+
+    def m_step_degree_corrected(n_theta, n_eta, n_pr):
+        half_edges_k = n_theta.sum(axis=0)       # Θ_k
+        half_edges_l = n_eta.sum(axis=0)         # H_ℓ
+        denom = half_edges_k[:, None, None] * half_edges_l[None, :, None]
+        pr = np.divide(n_pr, denom, out=np.zeros_like(n_pr), where=denom > 0)
+        return n_theta, n_eta, pr
+
+The log-likelihood reported for the degree-corrected model is
+
+.. math::
+   \log L = \sum_{(u,i)} \log \sum_{k,\ell} \omega_{ui}(k,\ell) - \sum_{k,\ell,r} \Theta_k H_\ell\, p_{k\ell}(r),
+
+where the second term equals the number of observed ratings right after an M-step.
+
+Initialisation
+^^^^^^^^^^^^^^
+
+A uniform affinity between user and item groups is a stationary point of the Poisson likelihood: around it the membership update is marginally stable and any structure in the links can only grow at second order, so runs started there stay at the symmetric solution in which every user has the same membership up to its degree. The degree-corrected model therefore multiplies the random initial rating probabilities by a random affinity pattern in which every user group prefers one item group ten to one (``ExpectationMaximization.initial_affinity``). The random draws for θ, η and p are the same as in the standard model; only this extra factor is added.
+
 Performance Optimizations
-----------------------
+-------------------------
 
 Several optimizations make this implementation efficient:
 
@@ -194,8 +232,8 @@ Several optimizations make this implementation efficient:
     self._omegas = np.zeros((n_samples, n_user_groups, n_item_groups))
 
 Want to Learn More?
-----------------
+-------------------
 
 * Check out the :doc:`../../api/modules` for detailed API documentation
-* See the :doc:`../mmsbm` for a description of the MMSBM algorithm
+* See the :doc:`mmsbm` for a description of the MMSBM algorithm
 * Look at :doc:`../../guides/quickstart` for practical examples

@@ -1,11 +1,11 @@
 Mixed Membership Stochastic Block Model
-====================================
+=======================================
 
 Introduction to MMSBM
-------------------
+---------------------
 
 What is MMSBM?
-^^^^^^^^^^^^
+^^^^^^^^^^^^^^
 
 Mixed Membership Stochastic Block Model (MMSBM) is a probabilistic model for recommendation systems that:
 
@@ -15,7 +15,7 @@ Mixed Membership Stochastic Block Model (MMSBM) is a probabilistic model for rec
 * Makes predictions based on group interactions
 
 Why use MMSBM?
-^^^^^^^^^^^^
+^^^^^^^^^^^^^^
 
 Traditional recommendation systems often assume users and items have fixed characteristics. However, in reality:
 
@@ -26,10 +26,10 @@ Traditional recommendation systems often assume users and items have fixed chara
 MMSBM captures this flexibility by allowing "mixed memberships" - both users and items can belong partially to multiple groups.
 
 Model Structure
--------------
+---------------
 
 Core Components
-^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
 
 1. **User Groups** (K groups):
 
@@ -50,7 +50,7 @@ Core Components
 
    * :math:`\eta_{i\ell}` = probability of item i belonging to group ℓ
 
-   * Example: A movie might be 60% "action" and 40% "drama":
+   * Example: A movie might be 60% "action" and 40% "drama"::
 
        movie_memberships = {
            'action_group': 0.6,
@@ -74,10 +74,10 @@ Core Components
        }
 
 Mathematical Formulation
----------------------
+------------------------
 
 The Rating Process
-^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^
 
 When a user rates an item, the model assumes:
 
@@ -98,7 +98,7 @@ Implementation::
                ).sum(axis=0).sum(axis=0)
 
 Constraints
-^^^^^^^^^
+^^^^^^^^^^^
 
 All vectors must represent valid probability distributions:
 
@@ -132,7 +132,7 @@ Implementation::
         ).reshape(df.shape)
 
 Model Training
-------------
+--------------
 
 The training process has two main components:
 
@@ -166,7 +166,7 @@ Implementation::
 
 
 Making Predictions
----------------
+------------------
 
 To predict ratings for new user-item pairs:
 
@@ -207,7 +207,7 @@ Implementation::
 
 
 Interpreting Results
------------------
+--------------------
 
 The model provides several insights:
 
@@ -250,8 +250,78 @@ Example Analysis::
     print("Rating patterns:", rating_probs)
 
 
+Degree-corrected variant
+------------------------
+
+Why a degree-corrected model?
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The standard MMSBM is *conditional on the observed pairs*: it models the probability of a rating given that user u has rated item i, and never asks which items a user rates or how many. This has two consequences:
+
+* The number of ratings of a user or item (its *degree*) cannot influence the groups, because degrees never enter the likelihood.
+* The structure of the bipartite graph of who-rates-what cannot influence the groups either. If two kinds of users rate different kinds of items but, once they rate, rate them in the same way, the standard model cannot tell them apart.
+
+In the stochastic block model literature the second point is addressed by modelling the links themselves, and the first by *degree correction* (Karrer and Newman, 2011): every node receives a propensity parameter, so that the groups capture the pattern of connections beyond what the degrees already explain. The mixed-membership version of the degree-corrected model is due to Ball, Karrer and Newman (2011), and it is the overlapping model used in Peixoto's (2019) Bayesian treatment of block models. ``degree_corrected=True`` fits its bipartite, rating-valued form.
+
+The model
+^^^^^^^^^
+
+Every cell of the user x item x rating tensor is a Poisson count with rate
+
+.. math::
+   \lambda_{uir} = \sum_{k,\ell} \theta_{uk}\, \eta_{i\ell}\, p_{k\ell}(r),
+
+where θ and η are *unnormalised*: their row sums are free, so they absorb the degrees, and the groups are left to explain who connects to whom. The data are the cells with a rating (count one) and all the other cells (count zero), so the log-likelihood is, up to a constant,
+
+.. math::
+   \log L = \sum_{(u,i) \in R^O} \log \lambda_{u i r_{ui}} - \sum_{k,\ell,r} \Theta_k H_\ell\, p_{k\ell}(r),
+   \qquad \Theta_k = \sum_u \theta_{uk},\; H_\ell = \sum_i \eta_{i\ell}.
+
+The second term is the expected total number of ratings under the model and is what makes the unobserved pairs count. It only involves the column sums of θ and η, so the cost of an iteration is the same as for the standard model.
+
+Interpretation of the parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Rescaling :math:`\theta_{\cdot k}` by a constant and :math:`p_{k\ell}(r)` by its inverse leaves every λ unchanged, and likewise for η. The implementation fixes this freedom in the *degree gauge*, in which
+
+* :math:`\sum_k \theta_{uk} = d_u`: the row of a user is its number of ratings split among the user groups. :math:`\theta_{uk}/d_u` is the membership distribution, comparable to the θ of the standard model, and :math:`\theta_{uk}` itself is the expected number of ratings that u makes as a member of group k (the labelled degree of Peixoto's overlapping model).
+* :math:`\sum_\ell \eta_{i\ell} = d_i`, likewise for items.
+* :math:`p_{k\ell}(r) = e_{k\ell}(r) / (e_k e_\ell)`, where :math:`e_{k\ell}(r)` is the expected number of ratings r between user group k and item group ℓ and :math:`e_k = \Theta_k`, :math:`e_\ell = H_\ell` are the numbers of ratings attached to each group. This is the usual form of the degree-corrected block matrix: :math:`\sum_r p_{k\ell}(r)` measures the affinity between the two groups relative to a random pairing of their ratings, and :math:`p_{k\ell}(r) / \sum_{r'} p_{k\ell}(r')` is the rating distribution of the pair, as in the standard model.
+
+Predictions
+^^^^^^^^^^^
+
+Conditioning on the pair being observed recovers the quantity predicted by the standard model,
+
+.. math::
+   \Pr[r_{ui} = r \mid u \text{ rates } i] = \frac{\lambda_{uir}}{\sum_{r'} \lambda_{uir'}},
+
+which is what ``predict`` returns, so accuracies and errors are comparable between the two models. In addition, the degree-corrected model predicts whether a pair is rated at all,
+
+.. math::
+   \Pr[u \text{ rates } i] = 1 - \exp\Big(-\sum_r \lambda_{uir}\Big),
+
+available through ``predict_links``.
+
+What to expect
+^^^^^^^^^^^^^^
+
+The degree-corrected model fits links and ratings jointly, so its groups reflect both who rates what (with popularity discounted) and how they rate. On data where the groups are only visible in the link pattern it recovers them and the standard model cannot; on data where the ratings carry all the signal both models find the same groups, but the degree-corrected one is not guaranteed to predict ratings better, because part of its parameters are spent on the links. Compare the two with ``held_out_log_likelihood`` or ``select_groups``.
+
+A uniform affinity between groups is a stationary point of the Poisson likelihood from which the EM cannot escape, so the rating probabilities are initialised with a random 10:1 affinity pattern between user and item groups (see :doc:`em_algorithm`). As for the standard model, use ``sampling > 1`` to guard against local optima.
+
+Choosing the number of groups
+-----------------------------
+
+``select_groups`` evaluates a grid of (user groups, item groups) by k-fold cross-validation and scores each combination by the mean held-out log-likelihood of the ratings,
+
+.. math::
+   \frac{1}{N_{\text{test}}} \sum_{(u,i) \in \text{test}} \log \Pr[r_{ui} \mid u, i],
+
+which is defined identically for both models. Each user's ratings are dealt round-robin across the folds, so every user with at least two ratings stays in training, and test ratings whose user or item is absent from training are left out. A held-out criterion is used instead of a penalised training likelihood (AIC, BIC) because the number of membership parameters grows with the number of users and items, outside the regime in which those penalties are justified. Because the fits are maximum likelihood, the predicted distributions are smoothed towards the uniform distribution, :math:`p' = (1 - \alpha) p + \alpha / R` with :math:`\alpha = 0.05` by default, before taking logs: otherwise a handful of held-out ratings predicted with near-zero probability dominate the mean and favour too few groups. ``criterion="accuracy"`` selects by held-out accuracy instead; the grid reports both.
+
 Want to Learn More?
-----------------
+-------------------
 
 * See :doc:`em_algorithm` for optimization details
 * Check :doc:`../../guides/quickstart` for practical examples

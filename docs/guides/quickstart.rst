@@ -1,10 +1,10 @@
 Quick Start Guide
-==============
+=================
 
 This guide will help you get started with MMSBM quickly.
 
 Basic Usage
----------
+-----------
 
 1. First, import the necessary modules::
 
@@ -39,7 +39,7 @@ Basic Usage
     predictions = model.predict(test_data)
 
 Complete Example
---------------
+----------------
 
 Here's a complete example with synthetic data::
 
@@ -68,7 +68,7 @@ Here's a complete example with synthetic data::
     print(f"MAE: {results['stats']['mae']:.3f}")
 
 Cross-Validation
---------------
+----------------
 
 To use cross-validation::
 
@@ -76,7 +76,7 @@ To use cross-validation::
     print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
 
 Model Parameters
--------------
+----------------
 
 Key parameters when initializing MMSBM:
 
@@ -86,12 +86,56 @@ Key parameters when initializing MMSBM:
 * ``sampling``: Number of parallel runs
 * ``seed``: Random seed for reproducibility
 * ``debug``: Enable debug logging
+* ``backend``: Computational backend (``numpy``, ``numba``, ``cupy`` or ``auto``)
+* ``degree_corrected``: Fit the degree-corrected variant (default ``False``)
+
+Degree-corrected model
+----------------------
+
+The standard model only explains the ratings of the pairs that are observed.
+The degree-corrected variant also explains *which* pairs are rated, with the
+degrees of users and items absorbed by the parameters instead of driving the
+groups (see :doc:`../theory/mmsbm`). It is selected with a flag and used in
+exactly the same way::
+
+    model = MMSBM(user_groups=3, item_groups=4, iterations=500, sampling=5,
+                  degree_corrected=True)
+    model.fit(train_data)
+    predictions = model.predict(test_data)     # p(r | u, i), as in the standard model
+    results = model.score()
+
+    # Probability that each (user, item) pair is rated at all
+    link_probabilities = model.predict_links(test_data[["users", "items"]])
+
+With the flag on, the rows of ``theta`` and ``eta`` sum to the number of
+ratings of each user and item; divide a row by its sum to get the membership
+distribution. With the flag off, results are identical to previous versions.
+
+Choosing the number of groups
+-----------------------------
+
+``select_groups`` fits every combination of a grid of user and item group
+numbers with k-fold cross-validation and scores it by the mean held-out
+log-likelihood of the ratings::
+
+    model = MMSBM(user_groups=2, item_groups=2, iterations=300, sampling=3, seed=1)
+    grid = model.select_groups(data, user_groups=[2, 3, 4], item_groups=[2, 4, 6], folds=5)
+    print(grid.sort_values("log_likelihood", ascending=False))
+
+    best = MMSBM(*model.selected_groups, iterations=300, sampling=3)
+    best.fit(data)
+
+The grid costs ``len(user_groups) * len(item_groups) * folds`` fits. Predicted
+probabilities are smoothed towards the uniform distribution before taking logs
+(``smoothing``, default 0.05), and ``criterion="accuracy"`` selects by held-out
+accuracy instead. The same log-likelihood is available for a single fit, after
+``predict``, through ``model.held_out_log_likelihood()``.
 
 Additional Features
-----------------
+-------------------
 
 Parallel Processing
-^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^
 
 MMSBM automatically uses parallel processing for different sampling runs::
 
@@ -100,7 +144,7 @@ MMSBM automatically uses parallel processing for different sampling runs::
     model.fit(data)
 
 Debug Mode
-^^^^^^^^^
+^^^^^^^^^^
 
 For debugging and monitoring::
 
@@ -110,7 +154,7 @@ For debugging and monitoring::
 This will print additional information during fitting.
 
 Next Steps
----------
+----------
 
 * Check the :doc:`../theory/mmsbm` for theoretical background
 * See :doc:`../theory/em_algorithm` for optimization details

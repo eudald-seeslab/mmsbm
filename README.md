@@ -18,6 +18,8 @@ A Python implementation of Mixed Membership Stochastic Block Models for recommen
 - Support for both simple and cross-validated fitting.
 - Parallel processing for multiple sampling runs.
 - Comprehensive model statistics and evaluation metrics.
+- Optional **degree-corrected** variant (`degree_corrected=True`): the mixed-membership analogue of the degree-corrected stochastic block model, which also models which user-item pairs are observed and lets node degrees be absorbed by the parameters instead of driving the groups. Same EM kernels, same cost per iteration.
+- Model selection: `select_groups` chooses the number of user and item groups by cross-validated held-out log-likelihood.
 - Compatible with Python 3.7+.
 
 ## Installation
@@ -112,7 +114,8 @@ model = MMSBM(
     iterations=500,     # Number of EM iterations
     sampling=5,         # Number of parallel EM runs (different random initializations); the best run is kept
     seed=1,             # Random seed for reproducibility
-    debug=False         # Enable debug logging
+    debug=False,        # Enable debug logging
+    degree_corrected=False  # Fit the degree-corrected variant (see below)
 )
 ```
 
@@ -163,6 +166,54 @@ eta = results['objects']['eta']      # Item group memberships
 pr = results['objects']['pr']        # Rating probabilities
 ```
 
+## Degree-corrected model
+
+The standard MMSBM only models the rating *given* that a user has rated an item: the probability of a rating is conditional on the (user, item) pair being observed, so the model never sees which items each user rates, nor how many. Degree heterogeneity therefore cannot affect the groups, but neither can the structure of the bipartite graph of who-rates-what.
+
+`degree_corrected=True` fits the mixed-membership analogue of the degree-corrected stochastic block model [2, 3, 4]: every (user, item, rating) cell is a Poisson count with rate
+
+    λ_uir = Σ_kℓ θ_uk η_iℓ p_kℓ(r)
+
+and the memberships θ and η are left unnormalised, so that their row sums absorb the degrees. The model then explains both which pairs are rated and how they are rated, while popularity is captured by per-node scales instead of by the groups.
+
+```python
+model = MMSBM(user_groups=3, item_groups=4, iterations=500, sampling=5, degree_corrected=True)
+model.fit(train)
+predictions = model.predict(test)   # p(r | u, i), exactly as in the standard model
+results = model.score()
+
+# Probability that a (user, item) pair is rated at all (degree-corrected model only)
+pairs = test[["users", "items"]]
+link_probabilities = model.predict_links(pairs)
+```
+
+What changes with the flag on:
+
+- Each row of `theta` and `eta` sums to the number of ratings of that user or item (its *degree*); divide a row by its sum to recover the membership distribution. `pr[k, ℓ, r]` holds the Poisson rate per pair of half-edges, `e_kℓ(r) / (e_k e_ℓ)`, where `e_kℓ(r)` is the expected number of ratings `r` between user group `k` and item group `ℓ` and `e_k`, `e_ℓ` are the numbers of ratings attached to each group; `pr[k, ℓ, r] / Σ_r' pr[k, ℓ, r']` is the rating distribution of the pair, as in the standard model.
+- `results[i]["likelihood"]` and `stats["likelihood"]` hold the Poisson log-likelihood.
+- `predict` returns p(r | u, i) exactly as before, so accuracies and errors are comparable across the two models, and `predict_links` becomes available.
+- The EM kernels (numpy, numba, cupy) are shared with the standard model; only the M-step normalisation, the likelihood and the prediction step differ, so the cost per iteration is the same.
+- The rating probabilities are initialised with a random 10:1 affinity pattern between user and item groups, because a uniform affinity is a stationary point of the Poisson likelihood from which the EM cannot escape. As with the standard model, use `sampling > 1` to guard against local optima.
+
+The degree-corrected model fits links and ratings jointly: on data where the groups are only visible in the link pattern it recovers them and the standard model cannot, but it is not guaranteed to predict ratings better, because part of its parameters are spent on the links. Compare the two with `held_out_log_likelihood` or `select_groups`.
+
+With the flag off (the default) the code path, the random numbers and the results are identical to previous versions.
+
+## Choosing the number of groups
+
+`select_groups` runs a cross-validated grid search over the number of user and item groups and scores every combination by the mean held-out log-likelihood of the ratings, `log p(r_ui | u, i)`, which is defined identically for the standard and the degree-corrected model. Each user's ratings are spread across folds, so every user with at least two ratings stays in training.
+
+```python
+model = MMSBM(user_groups=2, item_groups=2, iterations=300, sampling=3, seed=1, degree_corrected=True)
+grid = model.select_groups(train, user_groups=[2, 3, 4, 5], item_groups=[2, 4, 6], folds=5)
+print(grid.sort_values("log_likelihood", ascending=False))
+
+best = MMSBM(*model.selected_groups, iterations=300, sampling=3, degree_corrected=True)
+best.fit(train)
+```
+
+The held-out log-likelihood is used instead of a penalised training likelihood (AIC, BIC) because the number of membership parameters grows with the number of users and items, outside the regime where such penalties are justified. Because the fits are maximum likelihood, the predicted probabilities are smoothed towards the uniform distribution (`smoothing=0.05` by default) before taking logs; otherwise a handful of held-out ratings predicted with near-zero probability dominate the mean and favour too few groups. `criterion="accuracy"` selects by held-out accuracy instead, and the grid reports both. The grid costs `len(user_groups) × len(item_groups) × folds` fits, so start with a coarse grid and few iterations. After any `predict`, `model.held_out_log_likelihood()` gives the same criterion for a single fit.
+
 ## Running Tests
 
 To run tests do the following:
@@ -190,3 +241,9 @@ pytest
 
 # References
 [1]: Godoy-Lorite, Antonia, et al. "Accurate and scalable social recommendation using mixed-membership stochastic block models." Proceedings of the National Academy of Sciences 113.50 (2016): 14207-14212.
+
+[2]: Ball, Brian, Brian Karrer, and M. E. J. Newman. "Efficient and principled method for detecting communities in networks." Physical Review E 84.3 (2011): 036103.
+
+[3]: Karrer, Brian, and M. E. J. Newman. "Stochastic blockmodels and community structure in networks." Physical Review E 83.1 (2011): 016107.
+
+[4]: Peixoto, Tiago P. "Bayesian stochastic blockmodeling." In Advances in Network Clustering and Blockmodeling, Wiley (2019). arXiv:1705.10225.
