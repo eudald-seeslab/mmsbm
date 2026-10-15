@@ -9,9 +9,10 @@
 - Errors: invalid input and calls in the wrong order raise `mmsbm.MMSBMError`, a `ValueError`, or its subclass `mmsbm.NotFittedError` (also an `AttributeError`, as in scikit-learn) instead of `AssertionError`: `predict` before `fit`, `score` or `held_out_log_likelihood` before `predict`, `predict_links` on the standard model, `folds`, `smoothing` or `criterion` out of range, missing values, and scoring data without ratings. The `assert` statements they replace were removed by `python -O`, which silently disabled every check.
 - `MMSBM(log_file=None)` is the default: the log goes to the console unless a file is asked for. 1.x wrote `mmsbm.log` in the working directory of every program that used the package. `logger.setup_logger` has the same new default.
 - The API reference of the documentation is generated from the package (`docs/api/modules.rst`).
+- `install_requires` declares the oldest versions the test suite is run against, `numpy>=1.26` and `pandas>=2.2`; it had no bounds.
 
 ### Fixed
-- Importing the package set `pandas.options.mode.chained_assignment = None`, which silenced pandas' `SettingWithCopyWarning` in the whole program that used it. The option is no longer touched; the encoding of the data no longer writes into frames, so it raises no such warning itself with pandas 2 either.
+- Importing the package set `pandas.options.mode.chained_assignment = None`, which silenced pandas' `SettingWithCopyWarning` in the whole program that used it. The option is no longer touched. The data handling no longer writes into frames (the encoding builds the integer array directly and the conversion to strings builds its frame in one go), so the package itself emits no `SettingWithCopyWarning` nor the `ChainedAssignmentError` warning of pandas 2.2. Checked with numpy 1.26 and 2.5 and pandas 2.2, 2.3 and 3.0 with pandas' warnings turned into errors.
 - Missing values in the data were never detected: the check ran after the values had been converted to strings, so a `NaN` or `None` became a user, item or rating called `"nan"` or `"None"`. The check now runs first and raises `MMSBMError`.
 
 ### Deprecated, removed in 3.0 (not before October 2027)

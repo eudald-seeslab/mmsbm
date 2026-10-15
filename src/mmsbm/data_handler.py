@@ -95,11 +95,13 @@ class DataHandler:
 
     @staticmethod
     def _to_object_str(data):
-        out = data.copy()
-        for col in out.columns:
-            values = [str(x) for x in out[col].tolist()]
-            out[col] = pd.Series(values, index=out.index, dtype=object)
-        return out
+        """A new frame with every value of ``data`` as a plain ``str`` in columns of dtype ``object``.
+
+        Built in one go rather than column by column: pandas 2.2 takes assigning into a frame for a chained
+        assignment and warns, and pandas 2.3+ / 3 would otherwise keep a ``StringDtype``.
+        """
+        columns = {col: [str(x) for x in data[col].tolist()] for col in data.columns}
+        return pd.DataFrame(columns, index=data.index, dtype=object)
 
     @staticmethod
     def _rename_values(x, dict_):

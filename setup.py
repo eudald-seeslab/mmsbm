@@ -37,9 +37,10 @@ setup(
     license="BSD-3-Clause License",
     long_description=long_description,
     long_description_content_type="text/markdown",
+    # The oldest versions the test suite is run against
     install_requires=[
-        "numpy",
-        "pandas",
+        "numpy>=1.26",
+        "pandas>=2.2",
         "tqdm",
     ],
     extras_require={

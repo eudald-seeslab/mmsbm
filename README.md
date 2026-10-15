@@ -37,11 +37,11 @@ pip install mmsbm[numba]
 ```
 
 **CuPy (NVIDIA GPU Acceleration):**
-Make sure you have a compatible NVIDIA driver and CUDA toolkit installed. Then install with:
+Make sure you have a compatible NVIDIA driver and CUDA toolkit installed. `mmsbm[cupy]` installs `cupy-cuda12x`, the CuPy wheel built for CUDA 12, which is the most common toolkit:
 ```bash
 pip install mmsbm[cupy]
 ```
-> **Note**: The CuPy backend requires **Python 3.12 or lower**. As of December 2025, CuPy does not provide pre-built wheels for Python 3.13+.
+> **Note**: the CuPy wheel must match the CUDA toolkit of your machine. With CUDA 13 or CUDA 11 install `cupy-cuda13x` or `cupy-cuda11x` yourself instead of the extra (only one of the three can be installed in an environment); `mmsbm` uses whichever is present. See the [CuPy installation guide](https://docs.cupy.dev/en/stable/install.html) for the toolkit setup. CuPy 14 provides wheels for Python 3.10 to 3.14.
 
 You can also install all optional dependencies with:
 ```bash
