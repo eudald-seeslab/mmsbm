@@ -242,6 +242,14 @@ Several optimizations make this implementation efficient:
 
 3. **No process pool for a single run**: with ``sampling=1`` the EM runs in the calling process; worker processes are only started when several runs are requested.
 
+4. **Bounded memory**: the numpy and cupy kernels materialise the responsibility tensor :math:`\omega` (rows × K × L, in float64) of the rows they are given. Long data is processed in blocks whose partial numerators are summed, with as many rows per block as keep the tensor under 256 MiB by default (``chunk_size``). Data shorter than one block is processed in a single pass, exactly as before.
+
+5. **Parallel numba M-step**: the numba kernel never builds the tensor. Each row computes its K × L block, normalises it and adds it to per-thread partial accumulators of θ, η and p, which are summed at the end. The compiled kernels are cached on disk, so worker processes do not recompile them, and with ``sampling > 1`` the cores are shared between the runs.
+
+6. **Data resident on the GPU**: with the cupy backend the data and the parameters are copied to the GPU once per run and stay there; the normalisations of the M-step run on the GPU too and only the final parameters come back.
+
+The order of the floating-point additions differs between these paths (serial, per-thread partial sums, atomic adds on the GPU, blocks), so the backends agree to about :math:`10^{-12}` relative but not bit for bit.
+
 Want to Learn More?
 -------------------
 

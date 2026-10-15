@@ -1,12 +1,18 @@
+import numba
 from numba import njit, prange
 import numpy as np
 
 """Numba-accelerated computational kernels.
 
 These have the same public API as `kernels_numpy.py` but are compiled with
-Numba's `njit` for faster CPU execution.  Broadcasting-heavy expressions are
-kept because Numba now supports most NumPy operations; when support is
-missing we fall back to simple loops.
+Numba's `njit` for faster CPU execution.  The compiled code is cached on disk
+(``cache=True``), so a process only pays the compilation once: worker
+processes started for ``sampling > 1`` reuse the cache instead of recompiling.
+
+``update_coefficients`` never materialises the responsibility tensor: every
+row computes its K x L block, normalises it and adds it to per-thread partial
+accumulators, which are summed at the end.  Its memory is therefore
+independent of the number of ratings.
 """
 
 __all__ = [
@@ -15,10 +21,16 @@ __all__ = [
     "prod_dist",
 ]
 
+_EPS = np.finfo(np.float64).eps
 
-@njit(parallel=True, fastmath=True)
+# Upper bound, in bytes, of the per-thread partial accumulators of
+# update_coefficients (one copy of theta, eta and pr per chunk).
+ACCUMULATOR_BUDGET = 256 * 1024 * 1024
+
+
+@njit(parallel=True, fastmath=True, cache=True)
 def compute_omegas(data, theta, eta, pr):
-    """Numba version of compute_omegas."""
+    """Numba version of compute_omegas: the full (N, K, L) tensor."""
     n = data.shape[0]
     K = theta.shape[1]
     L = eta.shape[1]
@@ -37,51 +49,85 @@ def compute_omegas(data, theta, eta, pr):
     return omegas
 
 
-@njit
-def _sum_axis_1_2(arr):
-    """Helper to compute arr.sum(axis=(1, 2)) for older Numba versions."""
-    n_rows = arr.shape[0]
-    out = np.empty(n_rows, dtype=arr.dtype)
-    for i in range(n_rows):
-        out[i] = arr[i, :, :].sum()
-    return out
+@njit(parallel=True, fastmath=True, cache=True)
+def _partial_updates(data, theta, eta, pr, n_chunks):
+    """Per-chunk numerators of theta, eta and pr; chunks run in parallel."""
+    n = data.shape[0]
+    U, K = theta.shape
+    I, L = eta.shape
+    R = pr.shape[2]
+    chunk = (n + n_chunks - 1) // n_chunks
+
+    part_theta = np.zeros((n_chunks, U, K))
+    part_eta = np.zeros((n_chunks, I, L))
+    part_pr = np.zeros((n_chunks, K, L, R))
+
+    for c in prange(n_chunks):
+        local = np.empty((K, L))
+        start = c * chunk
+        end = min(n, start + chunk)
+        for idx in range(start, end):
+            u = data[idx, 0]
+            i = data[idx, 1]
+            r = data[idx, 2]
+
+            total = 0.0
+            for k in range(K):
+                t_uk = theta[u, k]
+                for l in range(L):
+                    w = t_uk * eta[i, l] * pr[k, l, r]
+                    local[k, l] = w
+                    total += w
+            total = max(total, _EPS)
+
+            for k in range(K):
+                for l in range(L):
+                    inc = local[k, l] / total
+                    part_theta[c, u, k] += inc
+                    part_eta[c, i, l] += inc
+                    part_pr[c, k, l, r] += inc
+
+    return part_theta, part_eta, part_pr
 
 
-@njit(fastmath=True)
 def update_coefficients(data, theta, eta, pr):
-    """Serial Numba version of update_coefficients."""
-    omegas = compute_omegas(data, theta, eta, pr)
-    sum_omega = _sum_axis_1_2(omegas)
+    """Parallel Numba version of update_coefficients.
 
-    # Avoid division by zero
-    eps = np.finfo(np.float64).eps
-    increments = omegas / (sum_omega + eps)[:, None, None]
+    The rows are split into as many contiguous chunks as there are Numba
+    threads (fewer if the per-chunk accumulators would exceed
+    ``ACCUMULATOR_BUDGET``), each chunk accumulates into its own copy of the
+    numerators and the copies are summed.  The result is deterministic for a
+    given number of threads; it differs from the serial order of summation in
+    the last bits.
+    """
+    n = data.shape[0]
+    U, K = theta.shape
+    I, L = eta.shape
+    R = pr.shape[2]
 
-    n_theta = np.zeros_like(theta)
-    n_eta = np.zeros_like(eta)
-    n_pr = np.zeros_like(pr)
+    per_chunk = 8 * (U * K + I * L + K * L * R)
+    n_chunks = max(1, min(numba.get_num_threads(), ACCUMULATOR_BUDGET // per_chunk, n))
 
+    part_theta, part_eta, part_pr = _partial_updates(data, theta, eta, pr, n_chunks)
+    return part_theta.sum(axis=0), part_eta.sum(axis=0), part_pr.sum(axis=0)
+
+
+@njit(parallel=True, fastmath=True, cache=True)
+def prod_dist(data, theta, eta, pr):
+    """Rating distribution p(r | u, i) for all rows in *data*."""
+    n = data.shape[0]
     K, L, R = pr.shape
 
-    # This loop is serial; prange is not safe here without atomic operations
-    for idx in range(data.shape[0]):
-        u, i, r = data[idx, 0], data[idx, 1], data[idx, 2]
+    out = np.zeros((n, R))
 
-        # Update theta for user u (sum over l)
+    for idx in prange(n):
+        u = data[idx, 0]
+        i = data[idx, 1]
         for k in range(K):
-            n_theta[u, k] += np.sum(increments[idx, k, :])
-
-        # Update eta for item i (sum over k)
-        for l in range(L):
-            n_eta[i, l] += np.sum(increments[idx, :, l])
-
-        # Update pr for rating r (no sum needed, just add increments)
-        for k in range(K):
+            t_uk = theta[u, k]
             for l in range(L):
-                # .item() is crucial to convert 0-d array to scalar for Numba
-                n_pr[k, l, r] += increments[idx, k, l].item()
+                w = t_uk * eta[i, l]
+                for r in range(R):
+                    out[idx, r] += w * pr[k, l, r]
 
-    return n_theta, n_eta, n_pr
-
-
-from kernels_numpy import prod_dist  # Numba lacks einsum; use NumPy version 
+    return out

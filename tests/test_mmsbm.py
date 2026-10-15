@@ -334,6 +334,25 @@ def test_run_one_sampling_executes_and_returns_expected_keys():
     )
 
 
+def test_log_file_none_writes_no_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    MMSBM(2, 2, iterations=1, seed=1, log_file=None).fit(mock_data(1), silent=False)
+    assert not (tmp_path / "mmsbm.log").exists()
+
+    MMSBM(2, 2, iterations=1, seed=1).fit(mock_data(1), silent=False)
+    assert (tmp_path / "mmsbm.log").exists()
+
+
+def test_chunk_size_does_not_change_the_fit():
+    results = {}
+    for chunk_size in (None, 7):
+        mm = MMSBM(2, 2, iterations=10, seed=1, backend="numpy", chunk_size=chunk_size)
+        mm.fit(mock_data(1), silent=True)
+        results[chunk_size] = (mm.predict(mock_data(2)), mm.results[0]["likelihood"])
+    np.testing.assert_allclose(results[7][0], results[None][0], rtol=1e-10)
+    assert results[7][1] == pytest.approx(results[None][1])
+
+
 def test_score_with_logging():
     """Ensure the logging branch (`silent=False`) executes without errors."""
     mm = MMSBM(2, 2, iterations=1, sampling=1, seed=3, backend="numpy")

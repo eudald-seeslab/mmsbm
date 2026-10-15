@@ -66,10 +66,12 @@ model_cupy = MMSBM(user_groups=2, item_groups=4, backend='cupy')
 ```
 
 - **`numpy` (Default)**: A highly optimized, pure NumPy implementation. It is universally compatible and requires no extra dependencies beyond NumPy itself.
-- **`numba`**: Uses the Numba library to just-in-time (JIT) compile the core computational loops. This can provide a significant speedup on the CPU, especially for large datasets. It is recommended for users who want better performance without a dedicated GPU. Note that there is some issue with the parallelization of samples which makes numba slower for smaller datasets.
-- **`cupy`**: Offloads computations to a compatible NVIDIA GPU using the CuPy library. This provides the best performance but requires a CUDA-enabled GPU and the appropriate drivers. Note that there is some overhead for transferring data to and from the GPU, so it's most effective on larger models where the computation time outweighs the data transfer time.
+- **`numba`**: Uses the Numba library to just-in-time (JIT) compile the core computational loops, which run in parallel on all cores: the M-step accumulates per-thread partial sums without ever materialising the responsibility tensor, so its memory does not grow with the number of ratings. The compiled kernels are cached on disk, so only the first run on a machine pays the compilation. With `sampling > 1` the cores are shared between the runs. It is recommended for users who want better performance without a dedicated GPU.
+- **`cupy`**: Offloads computations to a compatible NVIDIA GPU using the CuPy library. The data and the parameters are moved to the GPU once per run and stay there until the end, so there is no per-iteration transfer. This provides the best performance on large data but requires a CUDA-enabled GPU and the appropriate drivers.
 
-> **Note**: There are some issues with numba parallelization and cupy data transfer to the GPU which don't guarantee they will be superior to Numpy. Please try different backends to find the best one for your data and your system.
+The numpy and cupy kernels build the responsibility tensor (rows × user groups × item groups, in float64) of the rows they process. Long data is processed in blocks that keep this tensor under 256 MiB (`chunk_size=None`); `chunk_size` sets the number of rows per block explicitly. Data shorter than one block is processed in a single pass.
+
+The three backends compute the same quantities and agree to about 1e-12 relative; they do not agree bit for bit, because the order of the floating-point additions differs (parallel partial sums on numba, atomic adds on the GPU, blocks on long data).
 
 
 ## Usage
@@ -115,7 +117,9 @@ model = MMSBM(
     sampling=5,         # Number of parallel EM runs (different random initializations); the best run is kept
     seed=1,             # Random seed for reproducibility
     debug=False,        # Enable debug logging
-    degree_corrected=False  # Fit the degree-corrected variant (see below)
+    degree_corrected=False,  # Fit the degree-corrected variant (see below)
+    chunk_size=None,    # Rows per block of the E-step (None: as many as keep the ω tensor under 256 MiB)
+    log_file="mmsbm.log"  # Copy of the log messages; None logs to the console only
 )
 ```
 
@@ -245,8 +249,6 @@ pytest
 ## TODO
 
 - Progress bars are not working for jupyter notebooks.
-- There is a persistent (albeit harmless) warning when using the cupy backend.
-- Numba and cupy backends show unexpected behaviour on the "sampling" parallelization.
 - Improve the treatment of the prediction / score steps and the results object
 - Add sampling as an extra axis in the EM objects for more efficiency
 

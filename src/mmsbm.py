@@ -12,7 +12,7 @@ from helpers import assign_folds, drop_unseen
 
 from logger import setup_logger
 
-__version__ = "1.2.1"
+__version__ = "1.3.0"
 
 
 class MMSBM:
@@ -57,6 +57,18 @@ class MMSBM:
         degree heterogeneity is absorbed by the parameters instead of driving the groups. The EM kernels are shared
         with the standard model; only the M-step normalisation, the likelihood and the prediction step differ.
 
+    chunk_size: int or None, default=None
+        Rows per block of the E-step with the numpy and cupy backends, which materialise the responsibility tensor
+        (rows × user_groups × item_groups, in float64) of the rows they process. ``None`` chooses as many rows as
+        keep that tensor under 256 MiB, so the memory of an iteration is bounded whatever the number of ratings.
+        Data shorter than one block is processed exactly as before; longer data sums the partial numerators of
+        the blocks, which can change results in the last bits. The numba M-step never materialises the tensor and
+        ignores this parameter.
+
+    log_file: str or None, default="mmsbm.log"
+        File that receives a copy of the log messages, relative to the working directory. ``None`` logs to the
+        console only.
+
     Attributes
     ---------
     results: list of dict or None
@@ -97,6 +109,8 @@ class MMSBM:
         debug=False,
         backend="auto",
         degree_corrected=False,
+        chunk_size=None,
+        log_file="mmsbm.log",
     ):
         self.start_time = datetime.now()
         self.user_groups = user_groups
@@ -106,6 +120,8 @@ class MMSBM:
         self.debug = debug
         self.backend = backend
         self.degree_corrected = degree_corrected
+        self.chunk_size = chunk_size
+        self.log_file = log_file
         self.selected_groups = None
         self._show_progress = True
 
@@ -115,7 +131,7 @@ class MMSBM:
         ss = self.rng.bit_generator._seed_seq
         self.child_states = ss.spawn(sampling)
 
-        self.logger = setup_logger("MMSBM")
+        self.logger = setup_logger("MMSBM", log_file=log_file)
 
         self._normalization_factors = None
         self._user_indices = None
@@ -155,7 +171,8 @@ class MMSBM:
             dims=self._dims,
             norm_factors=self._normalization_factors,
             backend=self.backend,
-            debug=self.debug
+            debug=self.debug,
+            chunk_size=self.chunk_size,
         )
 
     @staticmethod
@@ -297,6 +314,20 @@ class MMSBM:
             pr = pr * self.em.initial_affinity(
                 rng, self._dims['n_user_groups'], self._dims['n_item_groups'])[:, :, None]
 
+        # With the cupy backend the data and the parameters live on the GPU
+        # for the whole run and only the final parameters come back; with the
+        # other backends these calls return their argument.
+        data = self.em.to_device(data)
+        theta = self.em.to_device(theta)
+        eta = self.em.to_device(eta)
+        pr = self.em.to_device(pr)
+
+        if self.em._backend == 'numba' and self.sampling > 1:
+            # Each run is a separate process: share the cores between them
+            # instead of letting every process use all of them.
+            import numba
+            numba.set_num_threads(max(1, numba.config.NUMBA_NUM_THREADS // self.sampling))
+
         # Configure tqdm to avoid overlapping bars when using multiprocessing
         tqdm_kwargs = {
             "position": i,
@@ -325,10 +356,12 @@ class MMSBM:
                 pr = self.em.normalize_with_self(npr)
 
             if self.debug and j % 50 == 0:
-                likelihood = likelihood_fn(self.train, theta, eta, pr)
+                likelihood = self.em.to_host(likelihood_fn(data, theta, eta, pr))
                 self.logger.debug(f"\nLog-likelihood at run {i} is {likelihood:.0f}")
 
-        likelihood = likelihood_fn(self.train, theta, eta, pr)
+        likelihood = likelihood_fn(data, theta, eta, pr)
+
+        theta, eta, pr, likelihood = (self.em.to_host(a) for a in (theta, eta, pr, likelihood))
 
         # If using GPU, explicitly free memory in the worker process before returning
         if self.em._backend == 'cupy':
@@ -702,6 +735,8 @@ class MMSBM:
                         seed=int(self.rng.integers(2**32)),
                         backend=self.backend,
                         degree_corrected=self.degree_corrected,
+                        chunk_size=self.chunk_size,
+                        log_file=self.log_file,
                     )
                     model._show_progress = False
                     model.fit(train, silent=True)

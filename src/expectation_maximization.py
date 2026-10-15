@@ -3,10 +3,19 @@
 from backend import load_backend
 import numpy as np
 
+# Upper bound, in bytes, of the responsibility tensor ω (N, K, L) that the
+# numpy and cupy kernels materialise: longer data is processed in blocks.
+CHUNK_BUDGET = 256 * 1024 * 1024
+
+
+def _on_device(x):
+    """True for CuPy arrays (without importing CuPy)."""
+    return type(x).__module__.startswith("cupy")
+
 
 class ExpectationMaximization:
     def __init__(self, dims, user_indices=None, item_indices=None, rating_indices=None,
-                 norm_factors=None, backend: str = "auto", debug: bool = False):
+                 norm_factors=None, backend: str = "auto", debug: bool = False, chunk_size=None):
         """
         Initialize EM algorithm with pre-computed values
 
@@ -24,6 +33,9 @@ class ExpectationMaximization:
             (GPU) or 'auto' (the first available of cupy, numba, numpy)
         debug : bool, optional
             Print the backend in use
+        chunk_size : int, optional
+            Rows per block of the E-step (see :meth:`chunk_rows`). By default as many rows as keep the
+            responsibility tensor of a block under :data:`CHUNK_BUDGET` bytes.
         """
         self._dims = dims
         self._user_indices = user_indices
@@ -31,6 +43,8 @@ class ExpectationMaximization:
         self._rating_indices = rating_indices
         self._normalization_factors = norm_factors
         self._debug = debug
+        self._chunk_size = chunk_size
+        self._device_factors = None
 
         # Load computational kernels dynamically
         (self._compute_omegas,
@@ -40,6 +54,71 @@ class ExpectationMaximization:
 
         if self._debug:
             print(f"Using {self._backend} backend")
+
+    def __getstate__(self):
+        # GPU copies are recreated in the process that uses them
+        state = self.__dict__.copy()
+        state["_device_factors"] = None
+        return state
+
+    # ------------------------------------------------------------------
+    # Arrays on the GPU (cupy backend) and processing in blocks
+    # ------------------------------------------------------------------
+
+    def to_device(self, x):
+        """``x`` as a CuPy array with the cupy backend; ``x`` itself otherwise.
+
+        The EM loop moves the data and the parameters to the GPU once per run
+        and keeps them there, instead of transferring them at every kernel
+        call.
+        """
+        if self._backend == "cupy":
+            import cupy
+            return cupy.asarray(x)
+        return x
+
+    @staticmethod
+    def to_host(x):
+        """``x`` as a NumPy array, or as a NumPy scalar for 0-d values."""
+        if _on_device(x):
+            import cupy
+            x = cupy.asnumpy(x)
+        if isinstance(x, np.ndarray) and x.ndim == 0:
+            return x[()]
+        return x
+
+    def _factors_like(self, x):
+        """The normalisation factors on the same device as ``x``."""
+        if _on_device(x):
+            if self._device_factors is None:
+                import cupy
+                self._device_factors = {k: cupy.asarray(v) for k, v in self._normalization_factors.items()}
+            return self._device_factors
+        return self._normalization_factors
+
+    def chunk_rows(self, n_user_groups, n_item_groups):
+        """Rows per block of the E-step.
+
+        The numpy and cupy kernels materialise the responsibility tensor of
+        the rows they are given, (rows, K, L) in float64, plus a temporary of
+        the same size. Longer data is processed in blocks of this many rows,
+        whose partial numerators are summed, so the memory of an iteration is
+        bounded whatever the number of ratings. The numba kernel of the M-step
+        never materialises the tensor and is not chunked.
+
+        With the default (``chunk_size=None``) the block keeps the tensor under
+        :data:`CHUNK_BUDGET` bytes. Summing partial numerators changes the
+        order of the additions, so results on data longer than one block can
+        differ in the last bits from an unchunked computation.
+        """
+        if self._chunk_size is not None:
+            return max(1, int(self._chunk_size))
+        return max(1, CHUNK_BUDGET // (8 * n_user_groups * n_item_groups))
+
+    @staticmethod
+    def _blocks(data, rows):
+        for start in range(0, len(data), rows):
+            yield data[start:start + rows]
 
     def compute_omegas(self, data, theta, eta, pr):
         """Compute unnormalised responsibilities ω_{ui}(k,ℓ).
@@ -108,11 +187,24 @@ class ExpectationMaximization:
             caller before the next EM iteration.
         """
 
-        return self._update_coeffs(data, theta, eta, pr)
+        rows = self.chunk_rows(theta.shape[1], eta.shape[1])
+        if self._backend == "numba" or len(data) <= rows:
+            return self._update_coeffs(data, theta, eta, pr)
+
+        n_theta = n_eta = n_pr = None
+        for block in self._blocks(data, rows):
+            t, e, p = self._update_coeffs(block, theta, eta, pr)
+            if n_theta is None:
+                n_theta, n_eta, n_pr = t, e, p
+            else:
+                n_theta += t
+                n_eta += e
+                n_pr += p
+        return n_theta, n_eta, n_pr
 
     def normalize_with_d(self, df, type_):
-        # Normalize using pre-computed factors
-        return df / self._normalization_factors[type_]
+        # Normalize using pre-computed factors (on the GPU when df is)
+        return df / self._factors_like(df)[type_]
 
     @staticmethod
     def normalize_with_self(df):
@@ -194,7 +286,8 @@ class ExpectationMaximization:
         half_edges_k = n_theta.sum(axis=0)                      # Θ_k, shape (K,)
         half_edges_l = n_eta.sum(axis=0)                        # H_ℓ, shape (L,)
         denom = half_edges_k[:, None, None] * half_edges_l[None, :, None]
-        pr = np.divide(n_pr, denom, out=np.zeros_like(n_pr), where=denom > 0)
+        positive = denom > 0
+        pr = np.where(positive, n_pr / np.where(positive, denom, 1.0), 0.0)
         return n_theta, n_eta, pr
 
     @staticmethod
@@ -245,11 +338,8 @@ class ExpectationMaximization:
         -------
         float
         """
-        omegas = self.compute_omegas(data, theta, eta, pr)
-        rates = omegas.sum(axis=(1, 2))
-        eps = np.finfo(float).eps
         expected_edges = np.einsum('k,l,klr->', theta.sum(axis=0), eta.sum(axis=0), pr)
-        return np.sum(np.log(np.maximum(rates, eps))) - expected_edges
+        return self.compute_likelihood(data, theta, eta, pr) - expected_edges
 
     @staticmethod
     def normalize_rows(x):
@@ -259,7 +349,8 @@ class ExpectationMaximization:
         conditional rating probabilities p(r | u, i) = λ_{uir} / Σ_{r'} λ_{uir'}.
         """
         sums = x.sum(axis=1, keepdims=True)
-        return np.divide(x, sums, out=np.zeros_like(x), where=sums > 0)
+        positive = sums > 0
+        return np.where(positive, x / np.where(positive, sums, 1.0), 0.0)
 
     def compute_likelihood(self, data, theta, eta, pr):
         """Log-likelihood of the standard model.
@@ -286,10 +377,13 @@ class ExpectationMaximization:
         -------
         float
         """
-        omegas = self.compute_omegas(data, theta, eta, pr)
-        probabilities = omegas.sum(axis=(1, 2))
         eps = np.finfo(float).eps
-        return np.sum(np.log(np.maximum(probabilities, eps)))
+        rows = self.chunk_rows(theta.shape[1], eta.shape[1])
+        total = 0.0
+        for block in self._blocks(data, rows):
+            probabilities = self._compute_omegas(block, theta, eta, pr).sum(axis=(1, 2))
+            total = total + np.sum(np.log(np.maximum(probabilities, eps)))
+        return total
 
     @staticmethod
     def prod_dist(x, theta, eta, pr):
@@ -309,6 +403,10 @@ class ExpectationMaximization:
             p(r|u,i) = Σ_k Σ_ℓ θ_{uk} η_{iℓ} p_{kℓ}(r)
 
         Using Einstein summation this becomes an efficient batched tensor
-        contraction without explicit Python loops.
+        contraction without explicit Python loops. Long data is processed in
+        blocks (see :meth:`chunk_rows`).
         """
-        return self._prod_dist(data, theta, eta, pr)
+        rows = self.chunk_rows(theta.shape[1], eta.shape[1])
+        if len(data) <= rows:
+            return self._prod_dist(data, theta, eta, pr)
+        return np.concatenate([self._prod_dist(block, theta, eta, pr) for block in self._blocks(data, rows)])

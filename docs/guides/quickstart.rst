@@ -90,6 +90,8 @@ Key parameters when initializing MMSBM:
 
 * ``user_groups``: Number of user groups (K)
 * ``item_groups``: Number of item groups (L)
+* ``chunk_size``: Rows per block of the E-step; by default as many as keep the responsibility tensor under 256 MiB
+* ``log_file``: File that receives a copy of the log messages (``None`` for console only)
 * ``iterations``: Number of EM iterations
 * ``sampling``: Number of parallel runs
 * ``seed``: Random seed for reproducibility

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0] - 2026-10-15
+
+### Added
+- `MMSBM(..., chunk_size=None)`: the numpy and cupy kernels process long data in blocks whose partial numerators are summed, so the memory of an iteration is bounded whatever the number of ratings. By default a block holds as many rows as keep the responsibility tensor (rows × K × L, float64) under 256 MiB (`ExpectationMaximization.CHUNK_BUDGET`); data shorter than one block is processed in a single pass, exactly as before. The likelihoods and the prediction step are blocked too.
+- `MMSBM(..., log_file="mmsbm.log")`: `None` disables the log file (console only). The default is unchanged.
+- `ExpectationMaximization.to_device` / `to_host` / `chunk_rows`.
+
+### Changed
+- Numba backend: the M-step runs in parallel over chunks of rows with per-thread partial accumulators (bounded by `kernels_numba.ACCUMULATOR_BUDGET`) and never materialises the responsibility tensor; `prod_dist` is a parallel kernel instead of numpy's einsum; all kernels are compiled with `cache=True`, so worker processes reuse the compiled code; with `sampling > 1` each run uses `NUMBA_NUM_THREADS // sampling` threads instead of oversubscribing the cores.
+- CuPy backend: the kernels accept CuPy arrays and then return CuPy arrays, and the EM loop keeps the data, the parameters and the normalisation factors on the GPU for the whole run (one transfer in, one out, instead of eight per iteration). `cupy.add.at` replaces the deprecated `cupyx.scatter_add` when available.
+- The numba and cupy kernels floor the responsibility sums with `max(s, eps)` like the numpy kernel (they used `s + eps`), so the three backends compute the same quantities. They agree to about 1e-12 relative, not bit for bit: the order of the floating-point additions differs between the serial, parallel, atomic and blocked paths. With the numpy backend and data shorter than one block the results are still identical to 1.0.7 (regression test).
+- `m_step_degree_corrected` and `normalize_rows` are written with `np.where` so that they run unchanged on CuPy arrays; same values.
+
 ## [1.2.1] - 2026-10-15
 
 ### Fixed

@@ -16,99 +16,90 @@ except Exception as _cupy_err:  # pragma: no cover – handled by backend loader
         "available."
     ) from _cupy_err
 
+"""GPU kernels.
+
+Every kernel accepts NumPy or CuPy arrays.  CuPy arrays are used in place and
+the results stay on the GPU; NumPy arrays are copied to the GPU and the
+results copied back.  Which one happens is decided by ``theta``: the EM loop
+keeps the data and the parameters on the GPU for the whole run and only moves
+the final parameters back, while callers that hold NumPy arrays (prediction,
+tests) keep working unchanged.
+"""
+
 __all__ = [
     "compute_omegas",
     "update_coefficients",
     "prod_dist",
 ]
 
+_EPS = np.finfo(np.float64).eps
 
-def compute_omegas(data, theta, eta, pr):
-    """
-    Public-facing compute_omegas for CuPy.
-    Accepts numpy arrays and returns a numpy array.
-    """
-    # Move data to GPU
-    data_cp = cp.asarray(data)
-    theta_cp = cp.asarray(theta)
-    eta_cp = cp.asarray(eta)
-    pr_cp = cp.asarray(pr)
+# cupy.add.at replaced cupyx.scatter_add (deprecated); keep the fallback for old CuPy versions
+_scatter_add = cp.add.at if hasattr(cp.add, "at") else scatter_add
 
-    # Perform computation on GPU
-    user_idx = data_cp[:, 0]
-    item_idx = data_cp[:, 1]
-    rating_idx = data_cp[:, 2]
-    pr_T = pr_cp.transpose(2, 0, 1)
-    omegas_cp = (
-        theta_cp[user_idx][:, :, None] *
-        eta_cp[item_idx][:, None, :] *
+
+def _like(reference, value):
+    """``value`` on the GPU if ``reference`` is a CuPy array, as NumPy otherwise."""
+    return value if isinstance(reference, cp.ndarray) else cp.asnumpy(value)
+
+
+def _omegas(data, theta, eta, pr):
+    """Unnormalised responsibilities, all arrays on the GPU."""
+    user_idx = data[:, 0]
+    item_idx = data[:, 1]
+    rating_idx = data[:, 2]
+    pr_T = pr.transpose(2, 0, 1)
+    return (
+        theta[user_idx][:, :, None] *
+        eta[item_idx][:, None, :] *
         pr_T[rating_idx]
     )
 
-    # Move result back to CPU
-    return cp.asnumpy(omegas_cp)
+
+def compute_omegas(data, theta, eta, pr):
+    """The full (N, K, L) tensor of unnormalised responsibilities."""
+    omegas = _omegas(cp.asarray(data), cp.asarray(theta), cp.asarray(eta), cp.asarray(pr))
+    return _like(theta, omegas)
 
 
 def update_coefficients(data, theta, eta, pr):
-    """GPU-accelerated version of update_coefficients."""
-    # Move data to GPU
-    data_cp = cp.asarray(data)
-    theta_cp = cp.asarray(theta)
-    eta_cp = cp.asarray(eta)
-    pr_cp = cp.asarray(pr)
+    """Unnormalised numerators of theta, eta and pr, accumulated on the GPU.
 
-    # --- Internal omega calculation (all on GPU) ---
-    user_idx, item_idx, rating_idx = data_cp[:, 0], data_cp[:, 1], data_cp[:, 2]
-    pr_T = pr_cp.transpose(2, 0, 1)
-    omegas = (
-        theta_cp[user_idx][:, :, None] *
-        eta_cp[item_idx][:, None, :] *
-        pr_T[rating_idx]
-    )
+    The accumulations use atomic scatter-adds, so the order of the summations
+    is not fixed and results can differ in the last bits between calls.
+    """
+    data_d = cp.asarray(data)
+    theta_d = cp.asarray(theta)
+    eta_d = cp.asarray(eta)
+    pr_d = cp.asarray(pr)
+
+    omegas = _omegas(data_d, theta_d, eta_d, pr_d)
     sum_omega = omegas.sum(axis=(1, 2))
-    eps = cp.finfo(cp.float64).eps
-    increments = omegas / (sum_omega + eps)[:, None, None]
+    increments = omegas / cp.maximum(sum_omega, _EPS)[:, None, None]
 
-    # --- Parameter updates (all on GPU) ---
-    n_theta = cp.zeros_like(theta_cp)
-    n_eta = cp.zeros_like(eta_cp)
-    n_pr = cp.zeros_like(pr_cp)
+    n_theta = cp.zeros_like(theta_d)
+    _scatter_add(n_theta, data_d[:, 0], increments.sum(axis=2))
 
-    # Theta update
-    inc_theta = increments.sum(axis=2)
-    scatter_add(n_theta, user_idx, inc_theta)
+    n_eta = cp.zeros_like(eta_d)
+    _scatter_add(n_eta, data_d[:, 1], increments.sum(axis=1))
 
-    # Eta update
-    inc_eta = increments.sum(axis=1)
-    scatter_add(n_eta, item_idx, inc_eta)
+    K, L, R = pr_d.shape
+    n_pr_T = cp.zeros((R, K, L), dtype=pr_d.dtype)
+    _scatter_add(n_pr_T, data_d[:, 2], increments)
+    n_pr = cp.ascontiguousarray(n_pr_T.transpose(1, 2, 0))
 
-    # Pr update
-    K, L, R = n_pr.shape
-    for r in range(R):
-        mask = (rating_idx == r)
-        if mask.any():
-            n_pr[:, :, r] = increments[mask].sum(axis=0)
-
-    # Move results back to CPU
-    return cp.asnumpy(n_theta), cp.asnumpy(n_eta), cp.asnumpy(n_pr)
+    return _like(theta, n_theta), _like(theta, n_eta), _like(theta, n_pr)
 
 
 def prod_dist(data, theta, eta, pr):
-    """GPU-accelerated version of prod_dist."""
-    # Move data to GPU
-    data_cp = cp.asarray(data)
-    theta_cp = cp.asarray(theta)
-    eta_cp = cp.asarray(eta)
-    pr_cp = cp.asarray(pr)
+    """Rating distribution p(r | u, i) for all rows in *data*."""
+    data_d = cp.asarray(data)
+    theta_d = cp.asarray(theta)
+    eta_d = cp.asarray(eta)
+    pr_d = cp.asarray(pr)
 
-    user_idx = data_cp[:, 0]
-    item_idx = data_cp[:, 1]
-
-    # Perform computation on GPU
     result = cp.einsum('nk,nl,klr->nr',
-                       theta_cp[user_idx],
-                       eta_cp[item_idx],
-                       pr_cp)
-
-    # Move result back to CPU
-    return cp.asnumpy(result) 
+                       theta_d[data_d[:, 0]],
+                       eta_d[data_d[:, 1]],
+                       pr_d)
+    return _like(theta, result)
