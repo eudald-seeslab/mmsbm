@@ -1,5 +1,5 @@
 Installation Guide
-================
+==================
 
 .. _installation:
 
@@ -49,7 +49,7 @@ You can also install all extras at once::
     pip install mmsbm[numba,cupy]
 
 Development Installation
----------------------
+------------------------
 
 For development, you can install MMSBM from source::
 
@@ -64,21 +64,21 @@ This will install additional dependencies needed for development:
 * black for code formatting
 
 Verifying Installation
--------------------
+----------------------
 
 To verify the installation, you can run::
 
     python -c "import mmsbm; print(mmsbm.__version__)"
 
 Running Tests
------------
+-------------
 
 To run the test suite::
 
     python -m pytest tests/
 
 Building Documentation
--------------------
+----------------------
 
 To build the documentation locally::
 
@@ -88,10 +88,10 @@ To build the documentation locally::
 The documentation will be available in ``docs/_build/html/``.
 
 Troubleshooting
--------------
+---------------
 
 Common Issues
-^^^^^^^^^^^
+^^^^^^^^^^^^^
 
 1. **ImportError: No module named 'mmsbm'**
 
@@ -108,7 +108,7 @@ Common Issues
        pip install mmsbm
 
 Getting Help
-----------
+------------
 
 If you encounter any issues:
 

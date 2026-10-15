@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import pandas as pd
 
 from helpers import _invert_dict
@@ -106,7 +107,7 @@ class DataHandler:
 
         return self.parse_train_data(data)
 
-    def _check_test_in_train(self, data):
+    def _check_test_in_train(self, data, columns=("users", "items", "ratings")):
         logger = logging.getLogger("MMSBM")
 
         col_to_train_dict = {
@@ -115,7 +116,8 @@ class DataHandler:
             "ratings": self.ratings_dict,
         }
 
-        for column, train_dict in col_to_train_dict.items():
+        for column in columns:
+            train_dict = col_to_train_dict[column]
             test_values = set(str(a) for a in data.loc[:, column])
             train_values = set(train_dict.keys())
             dif_values = test_values.difference(train_values)
@@ -139,6 +141,26 @@ class DataHandler:
         data = self._check_test_in_train(data)
 
         return self.parse_test_data(data)
+
+    def format_pairs(self, data):
+        """Encode (user, item) pairs with the training dictionaries.
+
+        Only the first two columns (``users`` and ``items``) are used, so a
+        ratings column is optional.  Pairs whose user or item was not seen in
+        training are dropped with a warning, as in :meth:`format_test_data`.
+
+        Returns
+        -------
+        ndarray of shape (N, 2)
+            Encoded ``[user_idx, item_idx]`` rows.
+        """
+        data = self._to_object_str(data.iloc[:, :2])
+        self._check_data(data)
+        data = self._check_test_in_train(data, columns=("users", "items"))
+
+        users = [self.obs_dict[str(a)] for a in data.iloc[:, 0]]
+        items = [self.items_dict[str(a)] for a in data.iloc[:, 1]]
+        return np.array([users, items], dtype=int).T.reshape(-1, 2)
 
     def return_dicts(self):
         return self.obs_dict, self.items_dict, self.ratings_dict

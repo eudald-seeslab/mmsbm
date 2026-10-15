@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0] - 2026-10-15
+
+### Added
+- Degree-corrected variant of the model, `MMSBM(..., degree_corrected=True)`: the mixed-membership analogue of the degree-corrected stochastic block model (Ball, Karrer & Newman 2011; Peixoto 2019), fitted with the same EM kernels as the standard model. Memberships absorb the node degrees and the model also explains which user-item pairs are observed. Only the M-step normalisation (`ExpectationMaximization.m_step_degree_corrected`), the likelihood (`poisson_log_likelihood`), the initialisation (`initial_affinity`) and the prediction step differ.
+- `MMSBM.predict_links` (degree-corrected model only): probability that a (user, item) pair is rated.
+- `MMSBM.held_out_log_likelihood`: mean log p(r | u, i) over the data passed to `predict`, for both models.
+- `MMSBM.select_groups`: cross-validated grid search over the number of user and item groups by held-out log-likelihood, with `helpers.assign_folds` and `helpers.drop_unseen`.
+- `DataHandler.format_pairs` to encode (user, item) pairs without ratings.
+- `benchmark_mmsbm.py --degree_corrected`.
+- Regression test pinning the standard model to the 1.0.7 reference output (`tests/data/regression_numpy_v1_0_7.npz`), plus tests of the degree-corrected model on data with planted link structure.
+- Documentation of the degree-corrected model and of model selection (README, theory and quick start pages).
+
+### Changed
+- Nothing in the standard model: with `degree_corrected=False` the code path, the random numbers and the results are identical to 1.0.7 (checked bitwise for the numpy and numba backends) and the cost per iteration is unchanged.
+
 ## [1.0.7] - 2026-04-25
 
 ### Fixed

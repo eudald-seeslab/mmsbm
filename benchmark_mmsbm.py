@@ -41,6 +41,7 @@ def main():
     parser.add_argument("--item_groups", type=int, default=2, help="Number of item latent groups.")
     parser.add_argument("--sampling", type=int, default=1, help="Parallel sampling runs.")
     parser.add_argument("--backend", type=str, default="numpy", help="Backend to use. Options: numpy, cupy, numba.")
+    parser.add_argument("--degree_corrected", action="store_true", help="Fit the degree-corrected model.")
     args = parser.parse_args()
 
     # Generate data
@@ -53,6 +54,7 @@ def main():
         sampling=args.sampling,
         seed=0,
         backend=args.backend,
+        degree_corrected=args.degree_corrected,
         debug=True
     )
 

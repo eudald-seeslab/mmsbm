@@ -154,6 +154,118 @@ class ExpectationMaximization:
                 temp / (np.where(temp.sum(axis=1) == 0, 1, temp.sum(axis=1)))[:, np.newaxis]
         ).reshape(df.shape)
 
+    # ------------------------------------------------------------------
+    # Degree-corrected (Poisson) variant
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def m_step_degree_corrected(n_theta, n_eta, n_pr):
+        """M-step of the degree-corrected model, written in the *degree gauge*.
+
+        The degree-corrected model (Ball, Karrer & Newman, 2011; Peixoto, 2019)
+        treats every (user, item, rating) cell as a Poisson count with rate
+
+            λ_{uir} = Σ_{kℓ} θ_{uk} η_{iℓ} p_{kℓ}(r),
+
+        with θ and η *unnormalised*: their row sums absorb the node degrees.
+        Rescaling θ_{·k} by c_k and p_{kℓ·} by 1/c_k (and likewise η_{·ℓ},
+        d_ℓ) leaves every λ unchanged, so we may fix that freedom.  Choosing
+        the gauge in which the expected degree of every node equals its
+        observed degree turns the exact conditional maximisers of the EM
+        objective into
+
+            θ_{uk}    = Σ_{i∈∂u} Σ_ℓ ω_{ui}(k,ℓ)               (so Σ_k θ_{uk} = d_u)
+            η_{iℓ}    = Σ_{u∈∂i} Σ_k ω_{ui}(k,ℓ)               (so Σ_ℓ η_{iℓ} = d_i)
+            p_{kℓ}(r) = Σ_{ui: r_{ui}=r} ω_{ui}(k,ℓ) / (Θ_k H_ℓ),
+
+        where Θ_k = Σ_u θ_{uk} and H_ℓ = Σ_i η_{iℓ} are the numbers of
+        half-edges attached to each group.  In words: the membership
+        numerators are *not* divided by the degrees, and the group-pair rates
+        are normalised by the half-edge counts instead of over ratings.  This
+        is the exact closed-form M-step (each block is the conditional
+        maximiser, and the three blocks are jointly stationary), so the
+        Poisson log-likelihood never decreases.
+
+        Parameters
+        ----------
+        n_theta, n_eta, n_pr : ndarray
+            Unnormalised numerators returned by :meth:`update_coefficients`.
+
+        Returns
+        -------
+        tuple(ndarray, ndarray, ndarray)
+            Updated ``theta`` (U, K), ``eta`` (I, L) and ``pr`` (K, L, R).
+        """
+        half_edges_k = n_theta.sum(axis=0)                      # Θ_k, shape (K,)
+        half_edges_l = n_eta.sum(axis=0)                        # H_ℓ, shape (L,)
+        denom = half_edges_k[:, None, None] * half_edges_l[None, :, None]
+        pr = np.divide(n_pr, denom, out=np.zeros_like(n_pr), where=denom > 0)
+        return n_theta, n_eta, pr
+
+    @staticmethod
+    def initial_affinity(rng, n_user_groups, n_item_groups, contrast=9.0):
+        """Random affinity pattern used to initialise the degree-corrected model.
+
+        A uniform affinity between user and item groups is a stationary point
+        of the Poisson likelihood: the EM update of the memberships is then
+        marginally stable and any link structure can only grow at second
+        order, so runs started there stay at the symmetric solution (every
+        user with the same mixed membership, up to its degree).  Multiplying
+        the initial rating probabilities by a strong random pattern removes
+        that degeneracy.  Each user group is assigned a preferred item group
+        (a balanced random assignment, so that the pattern has full contrast
+        for any K and L) and the corresponding rates are scaled by
+        ``1 + contrast``.
+
+        Returns
+        -------
+        ndarray of shape (K, L)
+        """
+        K, L = n_user_groups, n_item_groups
+        preferred = np.concatenate([rng.permutation(L) for _ in range(K // L + 1)])[:K]
+        pattern = np.ones((K, L))
+        pattern[np.arange(K), preferred] += contrast
+        return pattern
+
+    def poisson_log_likelihood(self, data, theta, eta, pr):
+        """Log-likelihood of the degree-corrected (Poisson) model.
+
+        Up to an additive constant,
+
+            log L = Σ_{(u,i,r) observed} log λ_{uir} − Σ_{kℓr} Θ_k H_ℓ p_{kℓ}(r),
+
+        where the second term is the expected total number of ratings under
+        the model, Σ_{u,i,r} λ_{uir}, computed in closed form from the column
+        sums of θ and η.  Right after an M-step it equals the number of
+        observations, so at convergence log L = Σ_obs log λ − N.
+
+        Parameters
+        ----------
+        data : ndarray of shape (N, 3)
+            Encoded observations ``[user_idx, item_idx, rating_idx]``.
+        theta, eta, pr : ndarray
+            Current parameters in the degree-corrected parametrisation.
+
+        Returns
+        -------
+        float
+        """
+        omegas = self.compute_omegas(data, theta, eta, pr)
+        rates = omegas.sum(axis=(1, 2))
+        eps = np.finfo(float).eps
+        expected_edges = np.einsum('k,l,klr->', theta.sum(axis=0), eta.sum(axis=0), pr)
+        return np.sum(np.log(np.maximum(rates, eps))) - expected_edges
+
+    @staticmethod
+    def normalize_rows(x):
+        """Normalise each row of a 2-D array to sum to one (all-zero rows stay zero).
+
+        Used by the degree-corrected model to turn Poisson rates λ_{uir} into
+        conditional rating probabilities p(r | u, i) = λ_{uir} / Σ_{r'} λ_{uir'}.
+        """
+        sums = x.sum(axis=1, keepdims=True)
+        return np.divide(x, sums, out=np.zeros_like(x), where=sums > 0)
+
     def compute_likelihood(self, data, theta, eta, pr):
         omegas = self.compute_omegas(data, theta, eta, pr)
         sum_omega = np.zeros(self._dims['n_samples'])

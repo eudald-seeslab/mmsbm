@@ -3,11 +3,12 @@ from datetime import datetime
 from itertools import repeat
 
 import numpy as np
+import pandas as pd
 from tqdm.auto import tqdm
 
 from data_handler import DataHandler
 from expectation_maximization import ExpectationMaximization
-from helpers import structure_folds, get_n_per_group
+from helpers import structure_folds, get_n_per_group, assign_folds, drop_unseen
 
 from logger import setup_logger
 
@@ -42,11 +43,23 @@ class MMSBM:
     backend: str, default="auto"
         The backend to use for ExpectationMaximization.
 
+    degree_corrected: bool, default=False
+        Fit the degree-corrected variant of the model. The standard MMSBM only models the rating given that a user
+        has rated an item. The degree-corrected model (the mixed-membership analogue of the degree-corrected
+        stochastic block model) also models *which* user-item pairs are observed, treating every (user, item, rating)
+        cell as a Poisson count with rate Σ_kℓ θ_uk η_iℓ p_kℓ(r). Memberships are then unnormalised: each row of
+        theta sums to the number of ratings of that user, each row of eta to the number of ratings of that item, so
+        degree heterogeneity is absorbed by the parameters instead of driving the groups. The EM kernels are shared
+        with the standard model; only the M-step normalisation, the likelihood and the prediction step differ.
+
     Attributes
     ---------
     results: dictionary
         Contains the goodness of fit statistics and the computed objects. Please see the score function for more
         details.
+
+    selected_groups: tuple or None
+        (user_groups, item_groups) selected by the last call to :meth:`select_groups`.
 
     """
 
@@ -69,6 +82,7 @@ class MMSBM:
         seed=None,
         debug=False,
         backend="auto",
+        degree_corrected=False,
     ):
         self.start_time = datetime.now()
         self.user_groups = user_groups
@@ -77,6 +91,9 @@ class MMSBM:
         self.sampling = sampling
         self.debug = debug
         self.backend = backend
+        self.degree_corrected = degree_corrected
+        self.selected_groups = None
+        self._show_progress = True
 
         # Initiate the general random state
         self.rng = np.random.default_rng(seed)
@@ -205,10 +222,15 @@ class MMSBM:
 
         Returns:
             dict: Final model state containing:
-                - likelihood: Final log-likelihood of the model
+                - likelihood: Final likelihood of the model (the Poisson log-likelihood
+                  when ``degree_corrected=True``)
                 - pr: Rating probabilities, shape (n_user_groups, n_item_groups, n_ratings)
                 - theta: User group memberships, shape (n_users, n_user_groups)
                 - eta: Item group memberships, shape (n_items, n_item_groups)
+
+            With ``degree_corrected=True`` the rows of theta and eta sum to the
+            user and item degrees, and pr holds the Poisson rates per pair of
+            half-edges rather than probabilities over ratings.
 
         Notes:
             - Parameters are initialized randomly but normalized to valid probabilities
@@ -232,28 +254,47 @@ class MMSBM:
                         self._dims['n_item_groups'],
                         self._dims['n_ratings'])))
 
+        if self.degree_corrected:
+            # Break the symmetry between groups with a random 10:1 affinity
+            # pattern; a uniform affinity is a stationary point of the Poisson
+            # likelihood from which the EM cannot escape (see
+            # ExpectationMaximization.initial_affinity).  The draws above are
+            # the same as in the standard model, so only the extra draw differs.
+            pr = pr * self.em.initial_affinity(
+                rng, self._dims['n_user_groups'], self._dims['n_item_groups'])[:, :, None]
+
         # Configure tqdm to avoid overlapping bars when using multiprocessing
         tqdm_kwargs = {
             "position": i,
             "leave": False,
             "ascii": False,
-            "disable": False,
+            "disable": not self._show_progress,
         }
+
+        # The degree-corrected model shares the E-step and the accumulation
+        # of the numerators with the standard model; only the M-step
+        # normalisation and the likelihood differ.
+        degree_corrected = self.degree_corrected
+        likelihood_fn = (self.em.poisson_log_likelihood if degree_corrected
+                         else self.em.compute_likelihood)
 
         for j in tqdm(range(self.iterations), **tqdm_kwargs):
             n_theta, n_eta, npr = self.em.update_coefficients(
                 data=data, theta=theta, eta=eta, pr=pr
             )
 
-            theta = self.em.normalize_with_d(n_theta, 'user')
-            eta = self.em.normalize_with_d(n_eta, 'item')
-            pr = self.em.normalize_with_self(npr)
+            if degree_corrected:
+                theta, eta, pr = self.em.m_step_degree_corrected(n_theta, n_eta, npr)
+            else:
+                theta = self.em.normalize_with_d(n_theta, 'user')
+                eta = self.em.normalize_with_d(n_eta, 'item')
+                pr = self.em.normalize_with_self(npr)
 
             if self.debug and j % 50 == 0:
-                likelihood = self.em.compute_likelihood(self.train, theta, eta, pr)
+                likelihood = likelihood_fn(self.train, theta, eta, pr)
                 self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
 
-        likelihood = self.em.compute_likelihood(self.train, theta, eta, pr)
+        likelihood = likelihood_fn(self.train, theta, eta, pr)
 
         # If using GPU, explicitly free memory in the worker process before returning
         if self.em._backend == 'cupy':
@@ -298,6 +339,10 @@ class MMSBM:
             self.em.compute_prod_dist(test, a["theta"], a["eta"], a["pr"])
             for a in self.results
         ]
+        if self.degree_corrected:
+            # prod_dist returns Poisson rates λ_uir; condition on the pair
+            # being observed to get p(r | u, i).
+            rats = [self.em.normalize_rows(a) for a in rats]
         prs = np.array([a["pr"] for a in self.results])
         likelihoods = np.array([a["likelihood"] for a in self.results])
         thetas = np.array([a["theta"] for a in self.results])
@@ -315,6 +360,72 @@ class MMSBM:
         self.prediction_matrix = np.array(rats).mean(axis=0)
 
         return self.prediction_matrix
+
+    def predict_links(self, data):
+        """Predicts the probability that each (user, item) pair is observed.
+
+        Only available for the degree-corrected model, which models which
+        pairs are rated. Under the Poisson model the probability that user u
+        rates item i at all is
+
+            P(A_ui > 0) = 1 - exp(-Σ_r λ_uir),
+
+        averaged over all sampling runs, as in :meth:`predict`.
+
+        Args:
+            data: DataFrame with columns [users, items]; a ratings column, if
+                present, is ignored. Pairs whose user or item was not in the
+                training set are dropped with a warning.
+
+        Returns:
+            Array with one probability per (kept) row of ``data``.
+        """
+
+        self._check_is_fitted()
+        assert self.degree_corrected, (
+            "Link prediction is only defined for the degree-corrected model; "
+            "fit with degree_corrected=True."
+        )
+
+        pairs = self.data_handler.format_pairs(data)
+        probabilities = [
+            1.0 - np.exp(-self.em.compute_prod_dist(pairs, a["theta"], a["eta"], a["pr"]).sum(axis=1))
+            for a in self.results
+        ]
+        return np.mean(probabilities, axis=0)
+
+    def held_out_log_likelihood(self, smoothing=0.0):
+        """Mean log-probability of the observed held-out ratings.
+
+        Computes the average over the rows passed to :meth:`predict` of
+        log p(r_ui | u, i), using the prediction matrix (the average over
+        sampling runs). It is defined identically for the standard and the
+        degree-corrected model, so it can be used to compare them and to choose
+        the number of groups (see :meth:`select_groups`).
+
+        Args:
+            smoothing: float in [0, 1], default=0.0
+                Weight of a uniform distribution over the ratings mixed into
+                the predicted distribution before taking logs,
+                p' = (1 - smoothing) p + smoothing / n_ratings. Maximum-likelihood
+                fits can assign a vanishing probability to a rating that is rare
+                for a pair of groups, and a single such held-out rating would
+                otherwise dominate the mean. With 0 the raw predictions are
+                used, floored at machine precision.
+
+        Returns:
+            float: Mean held-out log-likelihood per rating (non-positive).
+        """
+
+        self._check_has_predictions()
+        assert 0 <= smoothing <= 1, "smoothing must be between 0 and 1."
+
+        real = self.test[:, 2]
+        probabilities = self.prediction_matrix[np.arange(len(real)), real]
+        if smoothing:
+            probabilities = (1 - smoothing) * probabilities + smoothing / self.prediction_matrix.shape[1]
+        eps = np.finfo(float).eps
+        return float(np.mean(np.log(np.maximum(probabilities, eps))))
 
     def score(self, silent=False):
         """Computes model performance metrics and returns fitted parameters.
@@ -470,6 +581,107 @@ class MMSBM:
         )
 
         return accuracies
+
+    def select_groups(self, data, user_groups, item_groups, folds=5,
+                      criterion="log_likelihood", smoothing=0.05):
+        """Chooses the number of user and item groups by cross-validation.
+
+        For every combination of ``user_groups`` x ``item_groups`` a model
+        with this instance's settings (iterations, sampling, backend,
+        degree_corrected) is fitted on k-1 folds and evaluated on the held-out
+        fold with :meth:`held_out_log_likelihood` and :meth:`score`. Folds are
+        built with :func:`helpers.assign_folds`, which spreads each user's
+        ratings across folds. Ratings whose user or item is absent from the
+        training folds are left out of the evaluation.
+
+        The held-out log-likelihood is preferred over the training likelihood
+        with a BIC-type penalty because the number of membership parameters
+        grows with the number of users and items, which is outside the regime
+        where such penalties are justified. Because the fits are maximum
+        likelihood, the predicted distributions are smoothed towards the
+        uniform distribution before taking logs (see ``smoothing``); otherwise
+        a few held-out ratings predicted with near-zero probability dominate
+        the criterion and favour too few groups.
+
+        Args:
+            data: DataFrame with columns [users, items, ratings]
+            user_groups: Iterable of candidate numbers of user groups.
+            item_groups: Iterable of candidate numbers of item groups.
+            folds: int, default=5
+                Number of cross-validation folds.
+            criterion: str, default="log_likelihood"
+                Column used to pick the best combination: ``"log_likelihood"``
+                or ``"accuracy"``.
+            smoothing: float, default=0.05
+                Passed to :meth:`held_out_log_likelihood`.
+
+        Returns:
+            DataFrame: One row per combination with columns ``user_groups``,
+            ``item_groups``, ``log_likelihood`` (mean over folds of the mean
+            smoothed held-out log-likelihood per rating), ``log_likelihood_sd``,
+            ``accuracy`` and ``accuracy_sd``. The best combination according
+            to ``criterion`` is also stored in ``self.selected_groups``.
+
+        Example:
+            >>> grid = model.select_groups(data, user_groups=[2, 3, 4], item_groups=[2, 4])
+            >>> best = MMSBM(*model.selected_groups, degree_corrected=model.degree_corrected)
+        """
+
+        assert criterion in ("log_likelihood", "accuracy"), (
+            "criterion must be 'log_likelihood' or 'accuracy'."
+        )
+        user_groups = list(user_groups)
+        item_groups = list(item_groups)
+        fold_ids = assign_folds(data, folds, self.rng)
+
+        rows = []
+        for k in user_groups:
+            for l in item_groups:
+                self.logger.info(f"Evaluating {k} user groups and {l} item groups on {folds} folds...")
+                log_likelihoods, accuracies = [], []
+                for f in range(folds):
+                    train = data[fold_ids != f]
+                    test = drop_unseen(train, data[fold_ids == f])
+
+                    model = MMSBM(
+                        k,
+                        l,
+                        iterations=self.iterations,
+                        sampling=self.sampling,
+                        seed=int(self.rng.integers(2**32)),
+                        backend=self.backend,
+                        degree_corrected=self.degree_corrected,
+                    )
+                    model._show_progress = False
+                    model.fit(train, silent=True)
+                    model.predict(test)
+
+                    log_likelihoods.append(model.held_out_log_likelihood(smoothing))
+                    accuracies.append(model.score(silent=True)["stats"]["accuracy"])
+
+                rows.append(
+                    {
+                        "user_groups": k,
+                        "item_groups": l,
+                        "log_likelihood": np.mean(log_likelihoods),
+                        "log_likelihood_sd": np.std(log_likelihoods),
+                        "accuracy": np.mean(accuracies),
+                        "accuracy_sd": np.std(accuracies),
+                    }
+                )
+
+        results = pd.DataFrame(rows)
+        best = results[criterion].idxmax()
+        self.selected_groups = (
+            int(results.loc[best, "user_groups"]),
+            int(results.loc[best, "item_groups"]),
+        )
+        self.logger.info(
+            f"Best held-out {criterion} with {self.selected_groups[0]} user groups and "
+            f"{self.selected_groups[1]} item groups."
+        )
+
+        return results
 
     def choose_best_run(self, rats):
 
