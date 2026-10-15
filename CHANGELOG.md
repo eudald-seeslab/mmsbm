@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.1] - 2026-10-15
+
+### Changed
+- Preparing the training objects is now linear in the number of ratings (degrees via `np.bincount`). It scaled with ratings × (users + items) and, on large data, took longer than dozens of EM iterations. The precomputed index lists and the ω buffer, which no kernel used, are gone; `d0` and `d1` are built on first access.
+- Mapping results back to the original user, item and rating labels inverts each dictionary once instead of once per element (quadratic in the number of users before).
+- With `sampling=1` the EM runs in the calling process instead of a pool with a single worker.
+- None of this changes any result: with `degree_corrected=False` the random numbers and the outputs are identical to 1.0.7 (checked bitwise for the numpy and numba backends, and pinned by the regression test) and the cost per iteration is unchanged.
+
+
 ## [1.1.0] - 2026-10-15
 
 ### Added
@@ -11,9 +20,6 @@
 - `benchmark_mmsbm.py --degree_corrected`.
 - Regression test pinning the standard model to the 1.0.7 reference output (`tests/data/regression_numpy_v1_0_7.npz`), plus tests of the degree-corrected model on data with planted link structure.
 - Documentation of the degree-corrected model and of model selection (README, theory and quick start pages).
-
-### Changed
-- Nothing in the standard model: with `degree_corrected=False` the code path, the random numbers and the results are identical to 1.0.7 (checked bitwise for the numpy and numba backends) and the cost per iteration is unchanged.
 
 ## [1.0.7] - 2026-04-25
 

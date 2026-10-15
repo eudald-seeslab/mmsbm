@@ -65,7 +65,10 @@ class MMSBM:
 
     data_handler = None
     results = None
+    train = None
     test = None
+    _d0 = None
+    _d1 = None
     theta = None
     eta = None
     pr = None
@@ -109,34 +112,24 @@ class MMSBM:
 
     def _prepare_objects(self, train):
 
-        self.ratings = sorted(set(train[:, 2]))
+        self.ratings = np.unique(train[:, 2]).tolist()
         self.r = max(self.ratings)
         self.p = int(train[:, 0].max())
         self.m = int(train[:, 1].max())
 
-        self.d0 = {a: list(train[train[:, 0] == a, 1]) for a in set(train[:, 0])}
-        self.d1 = {a: list(train[train[:, 1] == a, 0]) for a in set(train[:, 1])}
-
         self.train = train
+        self._d0 = None
+        self._d1 = None
 
-        # Pre-compute normalization factors
+        # Pre-compute normalization factors: the degree of every user and
+        # item, repeated along the group axis so that it divides theta and
+        # eta row-wise.  Linear in the number of ratings.
+        user_degrees = np.bincount(train[:, 0], minlength=self.p + 1)
+        item_degrees = np.bincount(train[:, 1], minlength=self.m + 1)
         self._normalization_factors = {
-            'user': np.array([np.repeat(max(len(a), 1), self.user_groups)
-                              for a in self.d0.values()]),
-            'item': np.array([np.repeat(max(len(a), 1), self.item_groups)
-                              for a in self.d1.values()])
+            'user': np.repeat(np.maximum(user_degrees, 1)[:, None], self.user_groups, axis=1),
+            'item': np.repeat(np.maximum(item_degrees, 1)[:, None], self.item_groups, axis=1),
         }
-
-        # Pre-compute indices for update_coefficients
-        self._user_indices = [
-            np.where(train[:, 0] == a)[0] for a in range(self.p + 1)
-        ]
-        self._item_indices = [
-            np.where(train[:, 1] == a)[0] for a in range(self.m + 1)
-        ]
-        self._rating_indices = [
-            np.where(train[:, 2] == a)[0] for a in self.ratings
-        ]
 
         # Pre-compute dimensions
         self._dims = {
@@ -146,21 +139,44 @@ class MMSBM:
             'n_ratings': len(self.ratings)
         }
 
-        # Pre-allocate arrays for results
-        self._omegas = np.zeros((self._dims['n_samples'],
-                                 self._dims['n_user_groups'],
-                                 self._dims['n_item_groups']))
-
         # Initialize the expectation-maximization algorithm
         self.em = ExpectationMaximization(
             dims=self._dims,
-            user_indices=self._user_indices,
-            item_indices=self._item_indices,
-            rating_indices=self._rating_indices,
             norm_factors=self._normalization_factors,
             backend=self.backend,
             debug=self.debug
         )
+
+    @staticmethod
+    def _neighbours(keys, values):
+        """``{key: [values with that key]}`` for two aligned index arrays."""
+        order = np.argsort(keys, kind="stable")
+        unique, starts = np.unique(keys[order], return_index=True)
+        return {k: list(v) for k, v in zip(unique, np.split(values[order], starts[1:]))}
+
+    @property
+    def d0(self):
+        """Items rated by each user, ``{user_idx: [item_idx, ...]}``.
+
+        Built on first access from the training data (it is not needed by the
+        EM algorithm and is kept for backwards compatibility).
+        """
+        assert self.train is not None, "You need to fit the model first."
+        if self._d0 is None:
+            self._d0 = self._neighbours(self.train[:, 0], self.train[:, 1])
+        return self._d0
+
+    @property
+    def d1(self):
+        """Users that rated each item, ``{item_idx: [user_idx, ...]}``.
+
+        Built on first access from the training data (it is not needed by the
+        EM algorithm and is kept for backwards compatibility).
+        """
+        assert self.train is not None, "You need to fit the model first."
+        if self._d1 is None:
+            self._d1 = self._neighbours(self.train[:, 1], self.train[:, 0])
+        return self._d1
 
     def fit(self, data, silent=False):
         """Fits the MMSBM using multiple EM runs.
@@ -185,6 +201,12 @@ class MMSBM:
         self.data_handler = DataHandler()
         train = self.data_handler.format_train_data(data)
         self._prepare_objects(train)
+
+        if self.sampling == 1:
+            # A single run needs no pool of worker processes: run it here,
+            # with the same seed it would have received in a worker.
+            self.results = [self.run_one_sampling(train, self.child_states[0], 0)]
+            return
 
         # Ensure tqdm works nicely with multiprocessing
         try:

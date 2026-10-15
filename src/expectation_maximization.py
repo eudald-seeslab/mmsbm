@@ -5,8 +5,8 @@ import numpy as np
 
 
 class ExpectationMaximization:
-    def __init__(self, dims, user_indices, item_indices, rating_indices,
-                 norm_factors, backend: str = "auto", debug: bool = False):
+    def __init__(self, dims, user_indices=None, item_indices=None, rating_indices=None,
+                 norm_factors=None, backend: str = "auto", debug: bool = False):
         """
         Initialize EM algorithm with pre-computed values
 
@@ -14,14 +14,11 @@ class ExpectationMaximization:
         ----------
         dims : dict
             Dictionary with dimensions (n_samples, n_user_groups, n_item_groups, n_ratings)
-        user_indices : list
-            Pre-computed user indices for each user
-        item_indices : list
-            Pre-computed item indices for each item
-        rating_indices : list
-            Pre-computed rating indices for each rating
+        user_indices, item_indices, rating_indices : list, optional
+            Not used by any kernel; accepted and stored for backwards compatibility only.
         norm_factors : dict
-            Pre-computed normalization factors for users and items
+            Pre-computed normalization factors for users and items: the degree of every
+            user (shape (U, K)) and item (shape (I, L)), repeated along the group axis
         backend : str, optional
             Backend to use for computation ('numba' for Numba acceleration, 'numpy' for pure NumPy, or 'auto' to choose based on availability)
         """
@@ -40,11 +37,6 @@ class ExpectationMaximization:
 
         if self._debug:
             print(f"Using {self._backend} backend")
-
-        # Pre-allocate arrays for results
-        self._omegas = np.zeros((dims['n_samples'],
-                                 dims['n_user_groups'],
-                                 dims['n_item_groups']))
 
     def compute_omegas(self, data, theta, eta, pr):
         """Compute unnormalised responsibilities ω_{ui}(k,ℓ).

@@ -223,13 +223,11 @@ Several optimizations make this implementation efficient:
 
     omegas = theta[user_indices][:, :, np.newaxis] * eta[item_indices][:, np.newaxis, :]
 
-2. **Pre-computation**: Indices and normalization factors are computed once::
+2. **Pre-computation**: The degrees that normalise θ and η are computed once, in linear time::
 
-    self._user_indices = [np.where(train[:, 0] == a)[0] for a in range(self.p + 1)]
+    user_degrees = np.bincount(train[:, 0], minlength=n_users)
 
-3. **Memory reuse**: Arrays are pre-allocated and reused::
-
-    self._omegas = np.zeros((n_samples, n_user_groups, n_item_groups))
+3. **No process pool for a single run**: with ``sampling=1`` the EM runs in the calling process; worker processes are only started when several runs are requested.
 
 Want to Learn More?
 -------------------
