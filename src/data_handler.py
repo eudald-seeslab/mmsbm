@@ -73,7 +73,8 @@ class DataHandler:
 
     @staticmethod
     def return_original_indices(x, dict_):
-        return [_invert_dict(dict_)[a] for a in x]
+        inverse = _invert_dict(dict_)
+        return [inverse[a] for a in x]
 
     def return_theta_indices(self, theta):
         theta = pd.DataFrame(theta)
@@ -91,13 +92,8 @@ class DataHandler:
         # I'm just creating a dict with r (num of ratings) entries containing
         #  a dataframe each and then converting the working r indices to the
         #  originals.
-        prs = {}
-        [
-            prs.update({_invert_dict(self.ratings_dict)[a]: pd.DataFrame(pr[:, :, a])})
-            for a in range(pr.shape[2])
-        ]
-
-        return prs
+        inverse = _invert_dict(self.ratings_dict)
+        return {inverse[a]: pd.DataFrame(pr[:, :, a]) for a in range(pr.shape[2])}
 
     def format_train_data(self, data):
         # Convert to strings
