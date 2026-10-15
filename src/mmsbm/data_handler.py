@@ -6,8 +6,6 @@ import pandas as pd
 from mmsbm.exceptions import MMSBMError
 from mmsbm.helpers import _invert_dict
 
-pd.options.mode.chained_assignment = None
-
 
 class DataHandler:
     """Encodes the user, item and rating labels of the data as integer indices.
@@ -125,25 +123,18 @@ class DataHandler:
         self.items_dict = self._create_values_dict(df.iloc[:, 1])
         self.ratings_dict = self._create_values_dict(df.iloc[:, 2])
 
-        df.iloc[:, 0] = self._rename_values(df.iloc[:, 0], self.obs_dict)
-        df.iloc[:, 1] = self._rename_values(df.iloc[:, 1], self.items_dict)
-        df.iloc[:, 2] = self._rename_values(df.iloc[:, 2], self.ratings_dict)
-
-        # Convert whole dataframe to int
-        df = df.astype(int)
-
         # Note that we are returning numpy arrays
-        return df.values
+        return self._encode(df)
+
+    def _encode(self, df):
+        """Integer array of the columns of ``df`` (users, items and, if present, ratings) encoded with the
+        training dictionaries. The frame is not modified."""
+        columns = [self._rename_values(df.iloc[:, position], dict_) for position, dict_ in zip(range(df.shape[1]), self._dicts())]
+        return np.array(columns, dtype=int).T.reshape(len(df), df.shape[1])
 
     def parse_test_data(self, df):
         """Encode a frame of ``[users, items]`` or ``[users, items, ratings]`` columns."""
-        for position, dict_ in zip(range(df.shape[1]), self._dicts()):
-            df.iloc[:, position] = self._rename_values(df.iloc[:, position], dict_)
-
-        # Convert to int to guarantee correct dtype for numpy indexing
-        df = df.astype(int)
-
-        return df.values
+        return self._encode(df)
 
     @staticmethod
     def return_original_indices(x, dict_):
@@ -234,7 +225,7 @@ class DataHandler:
         data = self._to_object_str(data)
         data = self._check_test_in_train(data)
 
-        return self.parse_test_data(data).reshape(-1, 2)
+        return self.parse_test_data(data)
 
     def return_dicts(self):
         return self.obs_dict, self.items_dict, self.ratings_dict

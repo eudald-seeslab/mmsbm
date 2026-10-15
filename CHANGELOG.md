@@ -11,6 +11,7 @@
 - The API reference of the documentation is generated from the package (`docs/api/modules.rst`).
 
 ### Fixed
+- Importing the package set `pandas.options.mode.chained_assignment = None`, which silenced pandas' `SettingWithCopyWarning` in the whole program that used it. The option is no longer touched; the encoding of the data no longer writes into frames, so it raises no such warning itself with pandas 2 either.
 - Missing values in the data were never detected: the check ran after the values had been converted to strings, so a `NaN` or `None` became a user, item or rating called `"nan"` or `"None"`. The check now runs first and raises `MMSBMError`.
 
 ### Deprecated, removed in 3.0 (not before October 2027)
