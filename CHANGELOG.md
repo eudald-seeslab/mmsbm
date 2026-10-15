@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.0.1] - 2026-10-15
+
+### Changed
+- The PyPI classifier is `Development Status :: 5 - Production/Stable` (was `4 - Beta`).
+- Removed `src/__init__.py`, an empty file left over from the 1.x layout that was not part of the distribution. No code changed.
+
 ## [2.0.0] - 2026-10-15
 
 `mmsbm` is now a package. Nothing that worked with 1.4 stops working: everything that moved or changed keeps a compatibility path for the whole 2.x series and emits a `FutureWarning` that names the replacement (see the deprecation policy below). The only visible changes for a program that uses the documented API are the exception classes, which are still `AssertionError` subclasses, and the log file, which is no longer written unless asked for.

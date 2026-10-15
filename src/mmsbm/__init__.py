@@ -6,7 +6,7 @@ the ``mmsbm.kernels_*`` modules and :mod:`mmsbm.exceptions`) are its building bl
 """
 from importlib import import_module
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 from mmsbm._deprecation import warn_deprecated
 from mmsbm.data_handler import DataHandler
