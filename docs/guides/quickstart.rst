@@ -67,6 +67,11 @@ Here's a complete example with synthetic data::
     print(f"Accuracy: {results['stats']['accuracy']:.3f}")
     print(f"MAE: {results['stats']['mae']:.3f}")
 
+``accuracy``, ``one_off_accuracy`` and ``mae`` evaluate the most probable
+rating; ``expected_rating_accuracy`` and ``expected_rating_mae`` evaluate the
+expected rating; ``likelihood`` is the log-likelihood of the training data.
+Errors are in rating units when the rating labels are numbers.
+
 Cross-Validation
 ----------------
 
@@ -74,6 +79,9 @@ To use cross-validation::
 
     accuracies = model.cv_fit(data, folds=5)
     print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
+
+Each user's ratings are spread across the folds, so every user with at least
+two ratings stays in training in every fold.
 
 Model Parameters
 ----------------

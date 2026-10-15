@@ -8,7 +8,7 @@ from tqdm.auto import tqdm
 
 from data_handler import DataHandler
 from expectation_maximization import ExpectationMaximization
-from helpers import structure_folds, get_n_per_group, assign_folds, drop_unseen
+from helpers import assign_folds, drop_unseen
 
 from logger import setup_logger
 
@@ -32,7 +32,8 @@ class MMSBM:
 
     sampling: int, default=1
         The number of parallel computations to run. Each computation leads to slightly different results so a sampling
-        bigger than 0 adds to robustness of the model.
+        bigger than 0 adds to robustness of the model. Predictions average all runs; the run with the highest
+        training log-likelihood is the one exposed as ``theta``, ``eta``, ``pr`` and ``likelihood``.
 
     seed: int, default=1714
         Seed for reproducibility.
@@ -244,8 +245,9 @@ class MMSBM:
 
         Returns:
             dict: Final model state containing:
-                - likelihood: Final likelihood of the model (the Poisson log-likelihood
-                  when ``degree_corrected=True``)
+                - likelihood: Log-likelihood of the training data under the final
+                  parameters, Σ log p(r | u, i) (the Poisson log-likelihood when
+                  ``degree_corrected=True``)
                 - pr: Rating probabilities, shape (n_user_groups, n_item_groups, n_ratings)
                 - theta: User group memberships, shape (n_users, n_user_groups)
                 - eta: Item group memberships, shape (n_items, n_item_groups)
@@ -314,7 +316,7 @@ class MMSBM:
 
             if self.debug and j % 50 == 0:
                 likelihood = likelihood_fn(self.train, theta, eta, pr)
-                self.logger.debug(f"\nLikelihood at run {i} is {likelihood.sum():.0f}")
+                self.logger.debug(f"\nLog-likelihood at run {i} is {likelihood:.0f}")
 
         likelihood = likelihood_fn(self.train, theta, eta, pr)
 
@@ -342,7 +344,10 @@ class MMSBM:
     def predict(self, data):
         """Predicts ratings for new user-item pairs.
 
-        Uses the best model from all sampling runs to make predictions.
+        The returned probabilities are the average over all sampling runs.
+        The parameters exposed afterwards as ``theta``, ``eta``, ``pr`` and
+        ``likelihood`` are those of the run with the highest training
+        log-likelihood (see :meth:`choose_best_run`).
 
         Args:
             data: DataFrame with columns [users, items, ratings]
@@ -365,18 +370,14 @@ class MMSBM:
             # prod_dist returns Poisson rates λ_uir; condition on the pair
             # being observed to get p(r | u, i).
             rats = [self.em.normalize_rows(a) for a in rats]
-        prs = np.array([a["pr"] for a in self.results])
-        likelihoods = np.array([a["likelihood"] for a in self.results])
-        thetas = np.array([a["theta"] for a in self.results])
-        etas = np.array([a["eta"] for a in self.results])
 
-        best = self.choose_best_run(rats)
+        best = self.choose_best_run()
 
         # Store the cleaned best objects
-        self.theta = self.data_handler.return_theta_indices(thetas[best])
-        self.eta = self.data_handler.return_eta_indices(etas[best])
-        self.pr = self.data_handler.return_pr_indices(prs[best])
-        self.likelihood = likelihoods[best]
+        self.theta = self.data_handler.return_theta_indices(self.results[best]["theta"])
+        self.eta = self.data_handler.return_eta_indices(self.results[best]["eta"])
+        self.pr = self.data_handler.return_pr_indices(self.results[best]["pr"])
+        self.likelihood = self.results[best]["likelihood"]
 
         # The prediction matrix is the average of all runs
         self.prediction_matrix = np.array(rats).mean(axis=0)
@@ -455,17 +456,35 @@ class MMSBM:
         Evaluates the model's predictive performance using multiple metrics
         and returns both the evaluation statistics and the fitted model parameters.
 
+        .. versionchanged:: 1.2.0
+            ``mae`` is now the mean absolute error of the most probable rating.
+            Before it was one minus ``expected_rating_accuracy``.
+
+        Two point predictions are evaluated for every held-out rating: the
+        *most probable* rating, argmax_r p(r | u, i), and the *expected*
+        rating, Σ_r r p(r | u, i). Errors are measured in rating units when
+        every rating label is a number (so that half-star ratings or ratings
+        from 1 to 10 are handled correctly) and in positions of the sorted
+        list of distinct ratings otherwise. Rows whose predicted distribution
+        is all zeros are left out.
+
         Args:
             silent: If True, suppresses logging output. Defaults to False.
 
         Returns:
             dict: Contains two sub-dictionaries:
                 stats: Model performance metrics
-                    - accuracy: Percentage of exactly correct predictions
-                    - one_off_accuracy: Percentage of predictions off by at most 1
-                    - mae: Mean Absolute Error of predictions
-                    - s2: Sum of squared differences between predicted and actual ratings
-                    - s2pond: Weighted squared error considering rating probabilities
+                    - accuracy: Fraction of ratings equal to the most probable rating
+                    - one_off_accuracy: Fraction of ratings within one unit of the most probable rating
+                    - mae: Mean absolute error of the most probable rating
+                    - expected_rating_accuracy: Fraction of ratings equal to the rating level nearest to the
+                      expected rating
+                    - expected_rating_mae: Mean absolute error of the expected rating
+                    - s2: Sum of absolute errors of the most probable rating (``mae`` times the number of
+                      predictions; kept for backwards compatibility)
+                    - s2pond: Sum of absolute errors of the expected rating (``expected_rating_mae`` times the
+                      number of predictions; kept for backwards compatibility)
+                    - likelihood: Training log-likelihood of the run exposed in ``objects``
                 objects: Fitted model parameters
                     - theta: User group memberships, shape (n_users, n_user_groups)
                     - eta: Item group memberships, shape (n_items, n_item_groups)
@@ -509,20 +528,33 @@ class MMSBM:
         of model performance and helps avoid overfitting.
 
         The function:
-        1. Splits users into k groups
+        1. Assigns every rating to a fold with :func:`helpers.assign_folds`:
+           the ratings of each user are dealt round-robin across the folds,
+           so every user with at least two ratings is in the training part of
+           every fold and the folds have (almost) the same size
         2. For each fold:
-            - Uses k-1 groups for training
-            - Tests on the remaining group
+            - Trains on the other k-1 folds
+            - Tests on the fold, leaving out the ratings whose user or item
+              does not appear in the training folds
             - Runs multiple sampling iterations
         3. Returns accuracies for each fold
+
+        .. versionchanged:: 1.2.0
+            Before 1.2.0 every fold took, from every user, a fixed number of
+            ratings equal to the number of distinct items divided by
+            ``folds``. On sparse data (users with fewer ratings than that)
+            the first fold took all the ratings and the remaining folds were
+            empty; the test parts also overlapped with later training parts.
+            The splits, and therefore the returned accuracies, differ from
+            earlier versions for the same seed.
 
         Args:
             data: DataFrame with user, item, and rating columns
                 The input data for model fitting and validation.
                 Shape: (n_samples, 3)
             folds: int, default=5
-                Number of cross-validation folds.
-                Must not exceed the number of unique users or items.
+                Number of cross-validation folds, between 2 and the number of
+                ratings.
 
         Returns:
             list: Prediction accuracies for each fold
@@ -533,43 +565,30 @@ class MMSBM:
             >>> print(f"Mean accuracy: {np.mean(accuracies):.3f} ± {np.std(accuracies):.3f}")
 
         Raises:
-            AssertionError: If number of folds exceeds number of unique items.
+            AssertionError: If ``folds`` is smaller than 2 or larger than the number of ratings.
 
         Notes:
-            - Each fold preserves the user rating distribution
             - Uses parallel processing for sampling runs
-            - Stores best model parameters from all folds
+            - Stores the parameters of the fold with the highest accuracy
 
         See Also:
             fit: For simple model fitting without cross-validation
             score: For evaluating model performance
+            select_groups: For choosing the number of groups by cross-validation
         """
 
-        items_per_fold = structure_folds(data, folds)
+        assert 2 <= folds <= len(data), (
+            f"folds must be between 2 and the number of ratings ({len(data)})."
+        )
+        fold_ids = assign_folds(data, folds, self.rng)
 
-        temp = data
         accuracies = []
         all_results = []
         for f in range(folds):
             self.logger.info(f"Running fold {f + 1} of {folds}...")
 
-            # Get the correct indices
-            test_indices = [
-                a
-                for a in temp.groupby(temp.columns[0], as_index=False)
-                .apply(
-                    get_n_per_group,
-                    n=items_per_fold,
-                    rng=self.rng,
-                    include_groups=False,
-                )
-                .values
-            ]
-            test_indices = [a for b in test_indices for a in b if str(a) != "0"]
-
-            test = temp.loc[test_indices, :]
-            train = data[~data.index.isin(test.index)]
-            temp = temp[~temp.index.isin(test_indices)]
+            train = data[fold_ids != f]
+            test = drop_unseen(train, data[fold_ids == f])
 
             self.fit(train, silent=True)
             self.prediction_matrix = self.predict(test)
@@ -705,11 +724,26 @@ class MMSBM:
 
         return results
 
-    def choose_best_run(self, rats):
+    def choose_best_run(self, rats=None):
+        """Index of the sampling run with the highest training log-likelihood.
 
-        # We compute the accuracy of all of them and return the index of the best
-        accuracies = [self._compute_stats(a)["accuracy"] for a in rats]
-        return accuracies.index(max(accuracies))
+        .. versionchanged:: 1.2.0
+            Runs used to be ranked by their accuracy on the data passed to
+            :meth:`predict`, which selected on the test set. They are now
+            ranked by the log-likelihood of the training data, as the
+            documentation always stated. With ``sampling=1`` nothing changes.
+
+        Args:
+            rats: Ignored; kept for backwards compatibility.
+
+        Returns:
+            int: Position in ``self.results`` of the best run (the first one in
+            case of a tie).
+        """
+
+        self._check_is_fitted()
+        likelihoods = [float(a["likelihood"]) for a in self.results]
+        return int(np.argmax(likelihoods))
 
     def _compute_stats(self, rat):
         # How did we do?
@@ -718,6 +752,27 @@ class MMSBM:
         stats = self._compute_final_stats(rat)
 
         return stats
+
+    def _rating_values(self, n_ratings):
+        """Value of every rating level, in the model's index order.
+
+        The levels are the keys of the data handler's ratings dictionary. When
+        all of them parse as numbers, errors are measured in rating units;
+        otherwise (or before the data handler exists) every level is worth
+        its position in the sorted list of distinct ratings, which is what
+        versions before 1.2.0 always used.
+        """
+        handler = self.data_handler
+        if handler is not None and handler.ratings_dict is not None:
+            labels = [None] * n_ratings
+            for label, index in handler.ratings_dict.items():
+                if index < n_ratings:
+                    labels[index] = label
+            try:
+                return np.array([float(label) for label in labels])
+            except (TypeError, ValueError):
+                pass
+        return np.arange(n_ratings, dtype=float)
 
     def _compute_indicators(self, rat):
         """Compute boolean/error indicators for evaluation in pure NumPy.
@@ -744,19 +799,25 @@ class MMSBM:
             real = real[mask]
             rat = rat[mask]
 
-        true = (pred == real).astype(int)
-        almost = (np.abs(pred - real) <= 1).astype(int)
-        s2 = np.abs(pred - real)
+        values = self._rating_values(rat.shape[1])
+        real_value = values[real]
 
-        # Weighted quantities using the actual probability distribution
-        pred_pond = rat @ self.ratings  # dot per row
-        true_pond = (real == np.round(pred_pond)).astype(int)
-        s2pond = np.abs(pred_pond - real)
+        # Most probable rating
+        true = (pred == real).astype(int)
+        error = np.abs(values[pred] - real_value)
+        almost = (error <= 1 + 1e-9).astype(int)
+
+        # Expected rating under the predicted distribution, and the rating
+        # level nearest to it (the lower one in case of a tie)
+        expected = rat @ values
+        nearest = values[np.argmin(np.abs(expected[:, np.newaxis] - values[np.newaxis, :]), axis=1)]
+        true_pond = (nearest == real_value).astype(int)
+        s2pond = np.abs(expected - real_value)
 
         return {
             "true": true,
             "almost": almost,
-            "s2": s2,
+            "s2": error,
             "true_pond": true_pond,
             "s2pond": s2pond,
         }
@@ -767,21 +828,16 @@ class MMSBM:
         return {
             "accuracy": rat["true"].sum() / n,
             "one_off_accuracy": rat["almost"].sum() / n,
-            "mae": 1 - rat["true_pond"].sum() / n,
+            "mae": rat["s2"].sum() / n,
+            "expected_rating_accuracy": rat["true_pond"].sum() / n,
+            "expected_rating_mae": rat["s2pond"].sum() / n,
             "s2": rat["s2"].sum(),
             "s2pond": rat["s2pond"].sum(),
         }
 
     def compute_likelihood(self, data, theta, eta, pr):
-        """Optimized version using pre-computed arrays and handling zeros"""
-        omegas = self.em.compute_omegas(data, theta, eta, pr)
-        sum_omega = np.zeros(self._dims['n_samples'])
-        np.sum(omegas, axis=(1, 2), out=sum_omega)
+        """Log-likelihood of the standard model, Σ log p(r | u, i).
 
-        # Small epsilon to avoid log(0)
-        epsilon = np.finfo(float).eps
-        safe_omegas = np.maximum(omegas, epsilon)
-        safe_sums = np.maximum(sum_omega, epsilon)
-
-        return np.sum(safe_omegas * np.log(safe_omegas) -
-                      safe_omegas * np.log(safe_sums[:, np.newaxis, np.newaxis]))
+        Delegates to :meth:`ExpectationMaximization.compute_likelihood`.
+        """
+        return self.em.compute_likelihood(data, theta, eta, pr)

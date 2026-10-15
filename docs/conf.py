@@ -9,7 +9,7 @@
 project = 'mmsbm'
 copyright = '2024, Eudald Correig-Fraga'
 author = 'Eudald Correig-Fraga'
-release = '1.1.0'
+release = '1.2.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

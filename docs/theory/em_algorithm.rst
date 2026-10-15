@@ -176,6 +176,19 @@ All parameters must be normalized to represent valid probability distributions:
                 temp / (np.where(temp.sum(axis=1) == 0, 1, temp.sum(axis=1)))[:, np.newaxis]
         ).reshape(df.shape)
 
+Log-likelihood
+--------------
+
+The quantity reported as ``likelihood`` (for every run in ``results`` and in ``score()``) is the log-likelihood of the training ratings under the fitted parameters,
+
+.. math::
+   \log L = \sum_{(u,i)} \log p(r_{ui} \mid u, i) = \sum_{(u,i)} \log \sum_{k,\ell} \theta_{uk}\, \eta_{i\ell}\, p_{k\ell}(r_{ui}),
+
+which the EM iterations never decrease. With ``sampling > 1`` it decides which run's parameters are exposed; the predictions average all runs.
+
+.. versionchanged:: 1.2.0
+   Before 1.2.0 the reported value was the negative weighted entropy of the responsibilities, :math:`\sum_{(u,i)} \sum_{k,\ell} \tilde\omega_{ui}(k,\ell) \log \omega_{ui}(k,\ell)` with :math:`\tilde\omega` the unnormalised products :math:`\theta_{uk}\, \eta_{i\ell}\, p_{k\ell}(r_{ui})`, which is not a log-likelihood.
+
 The degree-corrected M-step
 ---------------------------
 

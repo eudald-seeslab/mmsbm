@@ -142,26 +142,30 @@ The training process has two main components:
 
    * Run EM algorithm on each
 
-   * Choose best result based on accuracy
+   * Average the predicted probabilities of all runs
+
+   * Expose the parameters of the run with the highest training log-likelihood
 
 2. **Cross-Validation Option**:
 
-   * Split data into folds
+   * Deal each user's ratings round-robin across the folds (``helpers.assign_folds``), so that every user with at least two ratings stays in training
 
-   * Train on each subset
+   * Train on the other folds
 
-   * Test on held-out data
+   * Test on the held-out fold, leaving out ratings whose user or item is absent from training
 
 Implementation::
 
     def cv_fit(self, data, folds=5):
         """Cross-validated model fitting"""
+        fold_ids = assign_folds(data, folds, self.rng)
         accuracies = []
         for f in range(folds):
-            train, test = self._split_data(data, f)
-            self.fit(train)
-            acc = self.score(test)['accuracy']
-            accuracies.append(acc)
+            train = data[fold_ids != f]
+            test = drop_unseen(train, data[fold_ids == f])
+            self.fit(train, silent=True)
+            self.predict(test)
+            accuracies.append(self.score(silent=True)["stats"]["accuracy"])
         return accuracies
 
 
@@ -187,23 +191,22 @@ Implementation::
             self.em.compute_prod_dist(test, a["theta"], a["eta"], a["pr"])
             for a in self.results
         ]
-        prs = np.array([a["pr"] for a in self.results])
-        likelihoods = np.array([a["likelihood"] for a in self.results])
-        thetas = np.array([a["theta"] for a in self.results])
-        etas = np.array([a["eta"] for a in self.results])
 
-        best = self.choose_best_run(rats)
+        # The run with the highest training log-likelihood
+        best = self.choose_best_run()
 
         # Store the cleaned best objects
-        self.theta = self.data_handler.return_theta_indices(thetas[best])
-        self.eta = self.data_handler.return_eta_indices(etas[best])
-        self.pr = self.data_handler.return_pr_indices(prs[best])
-        self.likelihood = likelihoods[best]
+        self.theta = self.data_handler.return_theta_indices(self.results[best]["theta"])
+        self.eta = self.data_handler.return_eta_indices(self.results[best]["eta"])
+        self.pr = self.data_handler.return_pr_indices(self.results[best]["pr"])
+        self.likelihood = self.results[best]["likelihood"]
 
         # The prediction matrix is the average of all runs
         self.prediction_matrix = np.array(rats).mean(axis=0)
 
         return self.prediction_matrix
+
+The goodness of fit is measured by ``score()`` with two point predictions per held-out rating, the most probable rating :math:`\arg\max_r p(r \mid u, i)` and the expected rating :math:`\sum_r r\, p(r \mid u, i)`: ``accuracy``, ``one_off_accuracy`` and ``mae`` refer to the former, ``expected_rating_accuracy`` and ``expected_rating_mae`` to the latter. Errors are in rating units when the rating labels are numbers and in positions of the sorted list of distinct ratings otherwise.
 
 
 Interpreting Results

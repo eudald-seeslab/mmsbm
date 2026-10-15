@@ -259,16 +259,34 @@ class ExpectationMaximization:
         return np.divide(x, sums, out=np.zeros_like(x), where=sums > 0)
 
     def compute_likelihood(self, data, theta, eta, pr):
+        """Log-likelihood of the standard model.
+
+            log L = Σ_{(u,i,r) observed} log p(r | u, i)
+                  = Σ_{(u,i,r) observed} log Σ_{kℓ} θ_{uk} η_{iℓ} p_{kℓ}(r),
+
+        i.e. the objective that the EM iterations maximise (Godoy-Lorite et
+        al., 2016). Probabilities are floored at machine precision before
+        taking logs.
+
+        .. versionchanged:: 1.2.0
+            Before 1.2.0 this returned Σ ω log(ω / Σω), the negative weighted
+            entropy of the responsibilities, which is not the log-likelihood.
+
+        Parameters
+        ----------
+        data : ndarray of shape (N, 3)
+            Encoded observations ``[user_idx, item_idx, rating_idx]``.
+        theta, eta, pr : ndarray
+            Normalised parameters of the standard model.
+
+        Returns
+        -------
+        float
+        """
         omegas = self.compute_omegas(data, theta, eta, pr)
-        sum_omega = np.zeros(self._dims['n_samples'])
-        np.sum(omegas, axis=(1, 2), out=sum_omega)
-
-        epsilon = np.finfo(float).eps
-        safe_omegas = np.maximum(omegas, epsilon)
-        safe_sums = np.maximum(sum_omega, epsilon)
-
-        return np.sum(safe_omegas * np.log(safe_omegas) -
-                      safe_omegas * np.log(safe_sums[:, np.newaxis, np.newaxis]))
+        probabilities = omegas.sum(axis=(1, 2))
+        eps = np.finfo(float).eps
+        return np.sum(np.log(np.maximum(probabilities, eps)))
 
     @staticmethod
     def prod_dist(x, theta, eta, pr):

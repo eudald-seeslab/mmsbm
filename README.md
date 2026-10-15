@@ -120,7 +120,7 @@ model = MMSBM(
 ```
 
 > **Note on `sampling`**  
-> Setting `sampling` to a value greater than 1 makes the library launch that many independent EM optimizations in parallel, each starting from a different random initialization. Once all runs finish, the one with the highest log-likelihood is selected. This increases the chances of finding a better (global) solution at the cost of extra computation time.
+> Setting `sampling` to a value greater than 1 makes the library launch that many independent EM optimizations in parallel, each starting from a different random initialization. The predicted probabilities average all runs; the run with the highest training log-likelihood is the one exposed as `theta`, `eta`, `pr` and `likelihood`. This increases the chances of finding a better (global) solution at the cost of extra computation time.
 
 
 ### Training Methods
@@ -128,7 +128,7 @@ model = MMSBM(
 The library offers two complementary ways to train a model:
 
 * **Simple Fit** – runs the EM algorithm once on the full training set. This is the fastest option and is appropriate when you already have a train-test split (or when you do not need a validation step).
-* **Cross-Validation Fit** – automatically splits the input data into *k* folds (default 5), trains a separate model on each *(k-1)* subset, and evaluates it on the held-out fold. The routine returns the accuracy of every fold so you can inspect the variability and pick hyper-parameters more reliably. It is slower because it performs the fit *k* times but provides an unbiased estimate of generalisation performance.
+* **Cross-Validation Fit** – automatically splits the input data into *k* folds (default 5), trains a separate model on each *(k-1)* subset, and evaluates it on the held-out fold. Each user's ratings are dealt round-robin across the folds, so every user with at least two ratings stays in training and the folds have the same size; held-out ratings whose user or item is absent from the training folds are left out. The routine returns the accuracy of every fold so you can inspect the variability and pick hyper-parameters more reliably. It is slower because it performs the fit *k* times but provides an unbiased estimate of generalisation performance.
 
 #### Simple Fit
 
@@ -165,6 +165,18 @@ theta = results['objects']['theta']  # User group memberships
 eta = results['objects']['eta']      # Item group memberships
 pr = results['objects']['pr']        # Rating probabilities
 ```
+
+Two point predictions are evaluated for every held-out rating: the *most probable* rating, `argmax_r p(r | u, i)`, and the *expected* rating, `Σ_r r p(r | u, i)`. Errors are measured in rating units when the rating labels are numbers (half stars or ratings from 1 to 10 are handled correctly) and in positions of the sorted list of distinct ratings otherwise.
+
+| `stats` key | Meaning |
+|---|---|
+| `accuracy` | fraction of ratings equal to the most probable rating |
+| `one_off_accuracy` | fraction of ratings within one unit of the most probable rating |
+| `mae` | mean absolute error of the most probable rating |
+| `expected_rating_accuracy` | fraction of ratings equal to the rating level nearest to the expected rating |
+| `expected_rating_mae` | mean absolute error of the expected rating |
+| `s2`, `s2pond` | sums of absolute errors of the most probable and of the expected rating (`mae` and `expected_rating_mae` times the number of predictions; kept for compatibility) |
+| `likelihood` | log-likelihood of the training data, `Σ log p(r_ui | u, i)`, of the run exposed in `objects` (the Poisson log-likelihood for the degree-corrected model) |
 
 ## Degree-corrected model
 

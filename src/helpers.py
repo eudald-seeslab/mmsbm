@@ -6,6 +6,11 @@ def _invert_dict(d):
 
 
 def get_n_per_group(x, n, rng):
+    """Up to ``n`` random row labels of ``x``.
+
+    Not used by the package since 1.2.0 (``MMSBM.cv_fit`` builds its folds
+    with :func:`assign_folds`); kept for backwards compatibility.
+    """
     for i in reversed(range(n)):
         try:
             return rng.choice(x.index, i + 1, replace=False)
@@ -14,6 +19,10 @@ def get_n_per_group(x, n, rng):
 
 
 def structure_folds(data, folds):
+    """Number of items per user and fold of the pre-1.2.0 ``cv_fit`` split.
+
+    Not used by the package since 1.2.0; kept for backwards compatibility.
+    """
     # How many different items we have?
     n_items = len(set(data.iloc[:, 1]))
     # Check that we haven't asked for too many folds
