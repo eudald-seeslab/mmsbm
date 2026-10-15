@@ -20,7 +20,7 @@ A Python implementation of Mixed Membership Stochastic Block Models for recommen
 - Comprehensive model statistics and evaluation metrics.
 - Optional **degree-corrected** variant (`degree_corrected=True`): the mixed-membership analogue of the degree-corrected stochastic block model, which also models which user-item pairs are observed and lets node degrees be absorbed by the parameters instead of driving the groups. Same EM kernels, same cost per iteration.
 - Model selection: `select_groups` chooses the number of user and item groups by cross-validated held-out log-likelihood.
-- Compatible with Python 3.7+.
+- Compatible with Python 3.10+ (tested on 3.10 to 3.13).
 
 ## Installation
 

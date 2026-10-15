@@ -1,5 +1,15 @@
 [run]
-source = mmsbm
+# Every module of the package (setup.py installs them as top-level modules)
+source =
+    mmsbm
+    expectation_maximization
+    data_handler
+    helpers
+    backend
+    logger
+    kernels_numpy
+    kernels_numba
+    kernels_cupy
 
 [report]
 exclude_lines =

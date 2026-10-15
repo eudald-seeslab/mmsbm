@@ -1,11 +1,17 @@
+import re
+
 from setuptools import setup
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+# Single source of the version: mmsbm.__version__
+with open("src/mmsbm.py", "r") as fh:
+    version = re.search(r'^__version__ = "([^"]+)"', fh.read(), re.M).group(1)
+
 setup(
     name="mmsbm",
-    version="1.2.0",
+    version=version,
     description="Compute Mixed Membership Stochastic Block Models.",
     py_modules=["mmsbm", "expectation_maximization", "data_handler", "helpers", "backend",
                 "logger", "kernels_numpy", "kernels_numba", "kernels_cupy"],
@@ -14,10 +20,14 @@ setup(
     author="Eudald Correig",
     author_email="eudald.correig@urv.cat",
     keywords=["bayesian analysis", "recommender systems", "network analysis", "python"],
-    python_requires='>=3.7',
+    python_requires='>=3.10',
     classifiers=[
         "Development Status :: 4 - Beta",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Intended Audience :: Science/Research",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",

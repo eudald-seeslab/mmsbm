@@ -6,10 +6,18 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+import re
+from pathlib import Path
+
 project = 'mmsbm'
 copyright = '2024, Eudald Correig-Fraga'
 author = 'Eudald Correig-Fraga'
-release = '1.2.0'
+# Single source of the version: mmsbm.__version__
+release = re.search(
+    r'^__version__ = "([^"]+)"',
+    (Path(__file__).resolve().parents[1] / 'src' / 'mmsbm.py').read_text(encoding='utf-8'),
+    re.M,
+).group(1)
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

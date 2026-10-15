@@ -12,6 +12,8 @@ from helpers import assign_folds, drop_unseen
 
 from logger import setup_logger
 
+__version__ = "1.2.1"
+
 
 class MMSBM:
     """
@@ -35,14 +37,16 @@ class MMSBM:
         bigger than 0 adds to robustness of the model. Predictions average all runs; the run with the highest
         training log-likelihood is the one exposed as ``theta``, ``eta``, ``pr`` and ``likelihood``.
 
-    seed: int, default=1714
-        Seed for reproducibility.
+    seed: int or None, default=None
+        Seed for reproducibility. With ``None`` every fit starts from fresh entropy and the results are not
+        reproducible.
 
-    debug: int, default=False
-        Make everything more verbose and set iterations to 10 and sampling to 1.
+    debug: bool, default=False
+        Print the backend in use and log the training log-likelihood every 50 iterations.
 
     backend: str, default="auto"
-        The backend to use for ExpectationMaximization.
+        The backend used by ExpectationMaximization: ``"numpy"``, ``"numba"``, ``"cupy"`` or ``"auto"`` (the first
+        available of cupy, numba, numpy).
 
     degree_corrected: bool, default=False
         Fit the degree-corrected variant of the model. The standard MMSBM only models the rating given that a user
@@ -55,9 +59,15 @@ class MMSBM:
 
     Attributes
     ---------
-    results: dictionary
-        Contains the goodness of fit statistics and the computed objects. Please see the score function for more
-        details.
+    results: list of dict or None
+        One entry per sampling run after :meth:`fit`, with the keys ``likelihood``, ``theta``, ``eta`` and ``pr``
+        (see :meth:`run_one_sampling`). The goodness-of-fit statistics are returned by :meth:`score`.
+
+    theta, eta, pr: DataFrame, DataFrame, dict of DataFrame or None
+        Parameters of the best run with the original user, item and rating labels, set by :meth:`predict`.
+
+    prediction_matrix: ndarray or None
+        Rating probabilities for the rows passed to the last :meth:`predict`, averaged over runs.
 
     selected_groups: tuple or None
         (user_groups, item_groups) selected by the last call to :meth:`select_groups`.

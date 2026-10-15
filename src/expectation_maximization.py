@@ -20,7 +20,10 @@ class ExpectationMaximization:
             Pre-computed normalization factors for users and items: the degree of every
             user (shape (U, K)) and item (shape (I, L)), repeated along the group axis
         backend : str, optional
-            Backend to use for computation ('numba' for Numba acceleration, 'numpy' for pure NumPy, or 'auto' to choose based on availability)
+            Backend to use for computation: 'numpy' (pure NumPy), 'numba' (JIT-compiled CPU kernels), 'cupy'
+            (GPU) or 'auto' (the first available of cupy, numba, numpy)
+        debug : bool, optional
+            Print the backend in use
         """
         self._dims = dims
         self._user_indices = user_indices

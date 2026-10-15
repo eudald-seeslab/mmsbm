@@ -5,4 +5,5 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "--cov=mmsbm --cov-report=term-missing"
+# The modules to measure are listed in .coveragerc
+addopts = "--cov --cov-report=term-missing"

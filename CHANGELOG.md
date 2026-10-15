@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.1] - 2026-10-15
+
+### Fixed
+- `MMSBM` docstrings: `debug` no longer claims to set 10 iterations and a single run (it prints the backend and logs the training log-likelihood every 50 iterations); `seed` defaults to `None`, not 1714; `results` is a list with one dictionary per run, not the output of `score`. The `backend` parameter documents `cupy`.
+- `mmsbm.__version__` exists and is the single source of the version for `setup.py` and the documentation (`CITATION.cff` is still updated by hand).
+- `python_requires`, the README and the installation guide claimed Python 3.7+. The package is tested on Python 3.10 to 3.13 and now says so; the CI matrix adds 3.13. No code changed.
+- Coverage measured only `mmsbm.py` (`--cov=mmsbm`); every module of the package is now measured, locally and in CI.
+
+### Removed
+- `helpers.structure_folds` and `helpers.get_n_per_group`, the pieces of the pre-1.2.0 `cv_fit` split, which nothing used any more.
+
 ## [1.2.0] - 2026-10-15
 
 ### Changed
